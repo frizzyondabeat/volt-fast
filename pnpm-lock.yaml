@@ -41,6 +41,9 @@ importers:
       ora:
         specifier: ^8.2.0
         version: 8.2.0
+      prettier:
+        specifier: ^3.5.1
+        version: 3.5.1
     devDependencies:
       '@types/fs-extra':
         specifier: ^11.0.4
@@ -51,9 +54,6 @@ importers:
       '@types/react':
         specifier: ^19.0.8
         version: 19.0.8
-      prettier:
-        specifier: ^3.5.1
-        version: 3.5.1
       tsc-hooks:
         specifier: ^1.1.2
         version: 1.1.2(typescript@5.7.3)

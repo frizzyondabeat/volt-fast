@@ -31,13 +31,13 @@
     "execa": "^9.5.2",
     "fs-extra": "^11.3.0",
     "gradient-string": "^3.0.0",
-    "ora": "^8.2.0"
+    "ora": "^8.2.0",
+    "prettier": "^3.5.1"
   },
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",
     "@types/node": "^22.13.1",
     "@types/react": "^19.0.8",
-    "prettier": "^3.5.1",
     "tsc-hooks": "^1.1.2",
     "typescript": "^5.7.3"
   }
