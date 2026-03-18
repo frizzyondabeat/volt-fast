@@ -1,0 +1,44 @@
+{
+  "name": "@frizzyondabeat/volt-fast",
+  "version": "0.1.0",
+  "description": "a CLI tool for initial project setups and configurations including essential hooks and scripts",
+  "type": "module",
+  "bin": {
+    "volt-fast": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "templates"
+  ],
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "clean": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\"",
+    "build": "pnpm clean && tsc",
+    "prepack": "pnpm build"
+  },
+  "keywords": [],
+  "author": "Efeoghene Omonigho",
+  "license": "ISC",
+  "packageManager": "pnpm@9.15.4+sha512.b2dc20e2fc72b3e18848459b37359a32064663e5627a51e4c74b2c29dd8e8e0491483c3abb40789cfd578bf362fb6ba8261b05f0387d76792ed6e23ea3b1b6a0",
+  "dependencies": {
+    "@antfu/ni": "^23.3.1",
+    "@clack/core": "^0.4.1",
+    "@clack/prompts": "^0.10.0",
+    "boxen": "^8.0.1",
+    "colorette": "^2.0.20",
+    "commander": "^13.1.0",
+    "consola": "^3.4.0",
+    "execa": "^9.5.2",
+    "fs-extra": "^11.3.0",
+    "gradient-string": "^3.0.0",
+    "ora": "^8.2.0"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^22.13.1",
+    "@types/react": "^19.0.8",
+    "prettier": "^3.5.1",
+    "tsc-hooks": "^1.1.2",
+    "typescript": "^5.7.3"
+  }
+}
