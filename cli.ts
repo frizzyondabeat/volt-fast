@@ -13,6 +13,7 @@ import { bold, underline, bgMagenta, black } from 'colorette';
 import prettier from 'prettier';
 import { Command } from 'commander';
 import { retro } from 'gradient-string';
+import stripJsonComments from 'strip-json-comments';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -44,6 +45,17 @@ async function detectProjectTools(dir: string): Promise<string[]> {
   ) {
     tools.push('nextjs');
   }
+
+  const [hasViteConfigJs, hasViteConfigTs, hasViteConfigMjs] =
+    await Promise.all([
+      fs.pathExists(`${dir}/vite.config.js`),
+      fs.pathExists(`${dir}/vite.config.ts`),
+      fs.pathExists(`${dir}/vite.config.mjs`),
+    ]);
+  if ([hasViteConfigJs, hasViteConfigTs, hasViteConfigMjs].some(Boolean)) {
+    tools.push('vite');
+  }
+
   const hasTsConfig: boolean = await fs.pathExists(`${dir}/tsconfig.json`);
   if (hasTsConfig) {
     tools.push('typescript');
@@ -143,7 +155,7 @@ function calculateDependencies(
 ): string[] {
   const deps: string[] = [];
   if (selectedTools.includes('tailwind')) {
-    deps.push('tailwindcss', 'postcss', 'autoprefixer');
+    deps.push('tailwindcss', 'postcss', '@tailwindcss/postcss');
   }
   if (selectedTools.includes('eslint')) {
     deps.push('eslint', 'eslint-plugin-react', 'eslint-plugin-react-hooks');
@@ -200,6 +212,7 @@ async function promptTools(): Promise<string[] | symbol> {
       { value: 'tailwind', label: 'Tailwind' },
       { value: 'eslint', label: 'ESLint' },
       { value: 'prettier', label: 'Prettier' },
+      { value: 'shadcn', label: 'Shadcn UI' },
     ],
   });
 }
@@ -288,25 +301,11 @@ async function generateTailwindConfig(
 ): Promise<[string, string][]> {
   const results: [string, string][] = [];
   results.push([
-    'tailwind.config.cjs',
-    await formatCode(`
-      /** @type {import('tailwindcss').Config} */
-      export default {
-        content: [],
-        theme: {
-          extend: {},
-        },
-        plugins: [],
-      }
-    `),
-  ]);
-  results.push([
     'postcss.config.cjs',
     await formatCode(`
       module.exports = {
         plugins: {
-          tailwindcss: {},
-          autoprefixer: {},
+          "@tailwindcss/postcss": {},
         }
       }
     `),
@@ -317,9 +316,7 @@ async function generateTailwindConfig(
     cssPath,
     await formatCode(
       `
-      @tailwind base;
-      @tailwind components;
-      @tailwind utilities;
+      @import "tailwindcss";
     `,
       'css'
     ),
@@ -374,7 +371,7 @@ const setupCommand = new Command('setup')
 
     const proceedWithOverride = await confirm({
       message: `Depending on which tools you enable, we will OVERRIDE these files with our own config:
-.eslintrc.cjs, prettier.config.cjs, tailwind.config.cjs, ./src/styles.css
+.eslintrc.cjs, prettier.config.cjs, postcss.config.cjs, ./src/styles.css
 
 Continue?`,
     });
@@ -408,17 +405,19 @@ Continue?`,
       { tailwind: tailwindSettings || {} }
     );
 
-    await runCommand(
-      packageManager,
-      'add',
-      ['-D', ...dependencies],
-      resolvedDir,
-      [
-        'Installing dependencies',
-        'Installed dependencies',
-        'Skipped installation. Please run the above command manually.',
-      ]
-    );
+    if (dependencies.length > 0) {
+      await runCommand(
+        packageManager,
+        'add',
+        ['-D', ...dependencies],
+        resolvedDir,
+        [
+          'Installing dependencies',
+          'Installed dependencies',
+          'Skipped installation. Please run the above command manually.',
+        ]
+      );
+    }
 
     if (selectedTools.includes('tailwind')) {
       await createFiles('Tailwind', generateTailwindConfig);
@@ -432,6 +431,102 @@ Continue?`,
     if (includeHooks) {
       await copyCustomHooks(resolvedDir);
     }
+
+    if (selectedTools.includes('shadcn')) {
+      consola.start('Configuring import aliases for Shadcn UI...');
+      try {
+        const isVite = detected.includes('vite');
+        const isNext = detected.includes('nextjs');
+
+        // Shadcn UI CLI always checks tsconfig.json first
+        const tsconfigPathsToUpdate = [path.join(resolvedDir, 'tsconfig.json')];
+
+        // If it's Vite, also update tsconfig.app.json as that's where Vite expects it
+        if (
+          isVite &&
+          fs.existsSync(path.join(resolvedDir, 'tsconfig.app.json'))
+        ) {
+          tsconfigPathsToUpdate.push(
+            path.join(resolvedDir, 'tsconfig.app.json')
+          );
+        }
+
+        for (const tsconfigPath of tsconfigPathsToUpdate) {
+          if (fs.existsSync(tsconfigPath)) {
+            const rawTsconfig = fs.readFileSync(tsconfigPath, 'utf-8');
+            const tsconfig = JSON.parse(stripJsonComments(rawTsconfig));
+            if (!tsconfig.compilerOptions) tsconfig.compilerOptions = {};
+
+            tsconfig.compilerOptions.baseUrl = '.';
+            tsconfig.compilerOptions.paths = {
+              ...tsconfig.compilerOptions.paths,
+              '@/*': ['./src/*'],
+            };
+
+            fs.writeJSONSync(tsconfigPath, tsconfig, { spaces: 2 });
+            consola.success(
+              `Updated ${path.basename(tsconfigPath)} with import aliases.`
+            );
+          }
+        }
+
+        if (isVite) {
+          const viteConfigPathTs = path.join(resolvedDir, 'vite.config.ts');
+          const viteConfigPathJs = path.join(resolvedDir, 'vite.config.js');
+
+          let viteConfigPath = null;
+          if (fs.existsSync(viteConfigPathTs))
+            viteConfigPath = viteConfigPathTs;
+          else if (fs.existsSync(viteConfigPathJs))
+            viteConfigPath = viteConfigPathJs;
+
+          if (viteConfigPath) {
+            let viteConfig = fs.readFileSync(viteConfigPath, 'utf-8');
+            if (!viteConfig.includes('vite-tsconfig-paths')) {
+              consola.start('Installing vite-tsconfig-paths...');
+              await execa(
+                packageManager,
+                ['add', '-D', 'vite-tsconfig-paths'],
+                { cwd: resolvedDir }
+              );
+
+              if (
+                !viteConfig.includes(
+                  "import tsconfigPaths from 'vite-tsconfig-paths'"
+                )
+              ) {
+                viteConfig =
+                  `import tsconfigPaths from 'vite-tsconfig-paths';\n` +
+                  viteConfig;
+                viteConfig = viteConfig.replace(
+                  'plugins: [',
+                  'plugins: [tsconfigPaths(), '
+                );
+                fs.writeFileSync(viteConfigPath, viteConfig, 'utf-8');
+                consola.success(
+                  'Updated vite.config with tsconfigPaths plugin.'
+                );
+              }
+            }
+          }
+        }
+
+        consola.start('Initializing Shadcn UI...');
+        await execa('npx', ['shadcn@latest', 'init'], {
+          cwd: resolvedDir,
+          stdio: 'inherit',
+        });
+        consola.success('Shadcn UI initialized successfully.');
+      } catch (error) {
+        consola.error(
+          'Failed to initialize Shadcn UI. You may need to run it manually: npx shadcn@latest init'
+        );
+        if (error instanceof Error) {
+          console.error(error.message);
+        }
+      }
+    }
+
     consola.log(
       `\u{1F973} Done! You just saved ${bgMagenta(black('a few minutes'))} in your day. Enjoy the little things in life. \u2728`
     );

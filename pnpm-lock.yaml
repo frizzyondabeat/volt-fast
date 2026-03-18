@@ -44,6 +44,9 @@ importers:
       prettier:
         specifier: ^3.5.1
         version: 3.5.1
+      strip-json-comments:
+        specifier: ^5.0.3
+        version: 5.0.3
     devDependencies:
       '@types/fs-extra':
         specifier: ^11.0.4
@@ -54,6 +57,9 @@ importers:
       '@types/react':
         specifier: ^19.0.8
         version: 19.0.8
+      '@types/strip-json-comments':
+        specifier: ^3.0.0
+        version: 3.0.0
       typescript:
         specifier: ^5.7.3
         version: 5.7.3
@@ -88,6 +94,10 @@ packages:
 
   '@types/react@19.0.8':
     resolution: {integrity: sha512-9P/o1IGdfmQxrujGbIMDyYaaCykhLKc0NGCtYcECNUr9UAaDe4gwvV9bR6tvd5Br1SG0j+PBpbKr2UYY8CwqSw==}
+
+  '@types/strip-json-comments@3.0.0':
+    resolution: {integrity: sha512-+vSlZeCCGm/1Q3WwBJDUSGHvADTQjRl4Fve0AG9H+A4+xgJ7yAkWKoc4g7I9UoVqtwCzjv2g/GZn4xipokMYyQ==}
+    deprecated: This is a stub types definition. strip-json-comments provides its own type definitions, so you do not need this installed.
 
   '@types/tinycolor2@1.4.6':
     resolution: {integrity: sha512-iEN8J0BoMnsWBqjVbWH/c0G0Hh7O21lpR2/+PrvAVgWdzL7eexIFm4JN/Wn10PTcmNdtS6U67r499mlWMXOxNw==}
@@ -303,6 +313,10 @@ packages:
     resolution: {integrity: sha512-aulFJcD6YK8V1G7iRB5tigAP4TsHBZZrOV8pjV++zdUwmeV8uzbY7yn6h9MswN62adStNZFuCIx4haBnRuMDaw==}
     engines: {node: '>=18'}
 
+  strip-json-comments@5.0.3:
+    resolution: {integrity: sha512-1tB5mhVo7U+ETBKNf92xT4hrQa3pm0MZ0PQvuDnWgAAGHDsfp4lPSpiS6psrSiet87wyGPh9ft6wmhOMQ0hDiw==}
+    engines: {node: '>=14.16'}
+
   tinycolor2@1.6.0:
     resolution: {integrity: sha512-XPaBkWQJdsf3pLKJV9p4qN/S+fm2Oj8AIPo1BTUhg5oxkvm9+SVEGFdhyOz7tTdUTfvxMiAs4sp6/eZO2Ew+pw==}
 
@@ -381,6 +395,10 @@ snapshots:
   '@types/react@19.0.8':
     dependencies:
       csstype: 3.1.3
+
+  '@types/strip-json-comments@3.0.0':
+    dependencies:
+      strip-json-comments: 5.0.3
 
   '@types/tinycolor2@1.4.6': {}
 
@@ -576,6 +594,8 @@ snapshots:
       ansi-regex: 6.1.0
 
   strip-final-newline@4.0.0: {}
+
+  strip-json-comments@5.0.3: {}
 
   tinycolor2@1.6.0: {}
 
