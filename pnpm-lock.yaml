@@ -54,9 +54,6 @@ importers:
       '@types/react':
         specifier: ^19.0.8
         version: 19.0.8
-      tsc-hooks:
-        specifier: ^1.1.2
-        version: 1.1.2(typescript@5.7.3)
       typescript:
         specifier: ^5.7.3
         version: 5.7.3
@@ -216,11 +213,6 @@ packages:
   isexe@2.0.0:
     resolution: {integrity: sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw==}
 
-  json5@2.2.3:
-    resolution: {integrity: sha512-XmOWe7eyHYH14cLdVPoyg+GOH3rYX++KpzrylJwSW98t3Nk+U8XOl8FWKOgwtzdb8lXGf6zYwDUzeHMWfxasyg==}
-    engines: {node: '>=6'}
-    hasBin: true
-
   jsonfile@6.1.0:
     resolution: {integrity: sha512-5dgndWOriYSm5cnYaJNhalLNDKOqFwyDB/rr1E9ZsGciGvKPs8R2xYGCacuf3z6K1YKDz182fd+fY3cn3pMqXQ==}
 
@@ -316,11 +308,6 @@ packages:
 
   tinygradient@1.1.5:
     resolution: {integrity: sha512-8nIfc2vgQ4TeLnk2lFj4tRLvvJwEfQuabdsmvDdQPT0xlk9TaNtpGd6nNRxXoK6vQhN6RSzj+Cnp5tTQmpxmbw==}
-
-  tsc-hooks@1.1.2:
-    resolution: {integrity: sha512-U3RvEYOZAdCWKT3apcV3UOgsIUMXUzKntqX/jiE3/w3MPuvwk9Yjl5i1Z9rxLBht4LI6x6xkUJpQ5kHKidBjtw==}
-    peerDependencies:
-      typescript: '^4.3.2 || ^5.0.2 '
 
   type-fest@4.34.1:
     resolution: {integrity: sha512-6kSc32kT0rbwxD6QL1CYe8IqdzN/J/ILMrNK+HMQCKH3insCDRY/3ITb0vcBss0a3t72fzh2YSzj8ko1HgwT3g==}
@@ -503,8 +490,6 @@ snapshots:
 
   isexe@2.0.0: {}
 
-  json5@2.2.3: {}
-
   jsonfile@6.1.0:
     dependencies:
       universalify: 2.0.1
@@ -598,11 +583,6 @@ snapshots:
     dependencies:
       '@types/tinycolor2': 1.4.6
       tinycolor2: 1.6.0
-
-  tsc-hooks@1.1.2(typescript@5.7.3):
-    dependencies:
-      json5: 2.2.3
-      typescript: 5.7.3
 
   type-fest@4.34.1: {}
 
