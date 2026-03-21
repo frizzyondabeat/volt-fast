@@ -4,7 +4,14 @@ import fs from 'fs-extra';
 import path, { dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { detect as detectPM } from '@antfu/ni';
-import { confirm, text, multiselect, isCancel, cancel } from '@clack/prompts';
+import {
+  confirm,
+  text,
+  multiselect,
+  select,
+  isCancel,
+  cancel,
+} from '@clack/prompts';
 import boxen from 'boxen';
 import consola from 'consola';
 import { execa } from 'execa';
@@ -103,6 +110,15 @@ type GeneratorOptions = {
   enabledTools: string[];
   detectedTools: string[];
   settings: any;
+};
+
+type HuskySettings = {
+  enablePreCommit: boolean;
+  enablePrePush: boolean;
+  runFormatOnCommit: boolean;
+  runTestsOnCommit: boolean;
+  runBuildOnPush: boolean;
+  testRunner: 'vitest' | 'jest' | null;
 };
 
 type GeneratorFunction = (
@@ -394,12 +410,119 @@ async function promptTailwindCSSFile({
   return { cssPath };
 }
 
-async function generateHuskyConfig(): Promise<[string, string][]> {
-  return [
-    ['.husky/pre-commit', 'pnpm lint\npnpm format:fix\n'],
-    ['.husky/pre-push', 'pnpm build\n'],
-    ['.husky/commit-msg', 'pnpx commitlint --edit $1\n'],
-  ];
+async function promptHuskySettings(): Promise<HuskySettings> {
+  const hookTypesResult = await multiselect({
+    message: 'Which Husky hooks would you like to set up?',
+    options: [
+      { value: 'pre-commit', label: 'Pre-commit' },
+      { value: 'pre-push', label: 'Pre-push (build)' },
+    ],
+  });
+  handlePromptCancel(hookTypesResult);
+  const hookTypes: string[] = hookTypesResult as string[];
+
+  const enablePreCommit = hookTypes.includes('pre-commit');
+  const enablePrePush = hookTypes.includes('pre-push');
+
+  let runFormatOnCommit = false;
+  let runTestsOnCommit = false;
+  let runBuildOnPush = false;
+  let testRunner: 'vitest' | 'jest' | null = null;
+
+  if (enablePreCommit) {
+    const formatResult = await confirm({
+      message: 'Run format before every commit?',
+    });
+    handlePromptCancel(formatResult);
+    runFormatOnCommit = formatResult as boolean;
+
+    const testsResult = await confirm({
+      message: 'Run tests before every commit?',
+    });
+    handlePromptCancel(testsResult);
+    runTestsOnCommit = testsResult as boolean;
+
+    if (runTestsOnCommit) {
+      const testRunnerResult = await select({
+        message: 'Which test runner should we set up?',
+        options: [
+          { value: 'vitest', label: 'Vitest' },
+          { value: 'jest', label: 'Jest' },
+        ],
+      });
+      handlePromptCancel(testRunnerResult);
+      testRunner = testRunnerResult as 'vitest' | 'jest';
+    }
+  }
+
+  if (enablePrePush) {
+    const buildResult = await confirm({
+      message: 'Run build before every push?',
+    });
+    handlePromptCancel(buildResult);
+    runBuildOnPush = buildResult as boolean;
+  }
+
+  return {
+    enablePreCommit,
+    enablePrePush,
+    runFormatOnCommit,
+    runTestsOnCommit,
+    runBuildOnPush,
+    testRunner,
+  };
+}
+
+async function generateHuskyConfig(
+  options: GeneratorOptions
+): Promise<[string, string][]> {
+  const huskySettings: HuskySettings | undefined = options.settings?.husky;
+  const files: [string, string][] = [];
+
+  if (huskySettings?.enablePreCommit) {
+    const preCommitCommands: string[] = ['pnpm lint'];
+    if (huskySettings.runFormatOnCommit) {
+      preCommitCommands.push('pnpm format:fix');
+    }
+    if (huskySettings.runTestsOnCommit) {
+      preCommitCommands.push('pnpm test');
+    }
+    files.push(['.husky/pre-commit', `${preCommitCommands.join('\n')}\n`]);
+  }
+
+  if (huskySettings?.enablePrePush && huskySettings.runBuildOnPush) {
+    files.push(['.husky/pre-push', 'pnpm build\n']);
+  }
+
+  files.push(['.husky/commit-msg', 'pnpx commitlint --edit $1\n']);
+  return files;
+}
+
+async function ensurePackageScripts(
+  projectDir: string,
+  scripts: Record<string, string>
+): Promise<void> {
+  const packageJsonPath = path.join(projectDir, 'package.json');
+  if (!(await fs.pathExists(packageJsonPath))) {
+    consola.warn('Could not find package.json to update scripts.');
+    return;
+  }
+
+  const packageJson = await fs.readJSON(packageJsonPath);
+  packageJson.scripts = packageJson.scripts || {};
+
+  let updated = false;
+  for (const [scriptName, scriptValue] of Object.entries(scripts)) {
+    if (!packageJson.scripts[scriptName]) {
+      packageJson.scripts[scriptName] = scriptValue;
+      updated = true;
+    }
+  }
+
+  if (updated) {
+    await fs.writeJSON(packageJsonPath, packageJson, { spaces: 2 });
+    consola.success('Updated package.json scripts for Husky hooks.');
+  }
 }
 
 async function configureHusky(projectDir: string): Promise<void> {
@@ -460,6 +583,14 @@ Continue?`,
     const selectedTools: string[] = selectedToolsResult as string[];
     const detected: string[] = await detectProjectTools(resolvedDir);
 
+    const huskySettings = selectedTools.includes('husky')
+      ? await promptHuskySettings()
+      : null;
+
+    if (huskySettings?.runFormatOnCommit && !selectedTools.includes('prettier')) {
+      selectedTools.push('prettier');
+    }
+
     const tailwindSettings = selectedTools.includes('tailwind')
       ? await promptTailwindCSSFile({
           projectDir: resolvedDir,
@@ -471,16 +602,28 @@ Continue?`,
     handlePromptCancel(includeHooksResult);
     const includeHooks: boolean = includeHooksResult as boolean;
     const packageManager: string = await detectPackageManager(targetDir ?? '.');
-    const dependencies: string[] = calculateDependencies(
-      selectedTools,
-      detected
+
+    const extraDeps: string[] = [];
+    if (huskySettings?.runTestsOnCommit) {
+      if (huskySettings.testRunner === 'vitest') {
+        extraDeps.push('vitest');
+      }
+      if (huskySettings.testRunner === 'jest') {
+        extraDeps.push('jest');
+        if (detected.includes('typescript')) {
+          extraDeps.push('ts-jest', '@types/jest');
+        }
+      }
+    }
+
+    const dependencies: string[] = Array.from(
+      new Set([...calculateDependencies(selectedTools, detected), ...extraDeps])
     );
-    const createFiles = createConfigFiles(
-      selectedTools,
-      detected,
-      resolvedDir,
-      { tailwind: tailwindSettings || {} }
-    );
+
+    const createFiles = createConfigFiles(selectedTools, detected, resolvedDir, {
+      tailwind: tailwindSettings || {},
+      husky: huskySettings || {},
+    });
 
     if (dependencies.length > 0) {
       await runCommand(
@@ -506,6 +649,18 @@ Continue?`,
       await createFiles('ESLint', generateEslintConfig);
     }
     if (selectedTools.includes('husky')) {
+      const scriptsToEnsure: Record<string, string> = {};
+      if (huskySettings?.runFormatOnCommit) {
+        scriptsToEnsure['format:fix'] = 'prettier . --write';
+      }
+      if (huskySettings?.runTestsOnCommit) {
+        scriptsToEnsure['test'] =
+          huskySettings.testRunner === 'vitest' ? 'vitest' : 'jest';
+      }
+      if (Object.keys(scriptsToEnsure).length > 0) {
+        await ensurePackageScripts(resolvedDir, scriptsToEnsure);
+      }
+
       await createFiles('Husky', generateHuskyConfig);
       await configureHusky(resolvedDir);
     }
