@@ -311,7 +311,8 @@ async function generateTailwindConfig(
     `),
   ]);
   const cssPath: string =
-    options.settings?.tailwind?.cssPath || './src/styles.css';
+    options.settings?.tailwind?.cssPath ||
+    getDefaultTailwindCssPath(options.detectedTools);
   results.push([
     cssPath,
     await formatCode(
@@ -324,16 +325,64 @@ async function generateTailwindConfig(
   return results;
 }
 
-async function promptTailwindCSSFile(): Promise<{ cssPath: string | null }> {
+function getDefaultTailwindCssPath(detectedTools: string[]): string {
+  if (detectedTools.includes('nextjs')) {
+    return './src/app/globals.css';
+  }
+  if (detectedTools.includes('vite')) {
+    return './src/index.css';
+  }
+  return './src/styles.css';
+}
+
+async function resolveTailwindCssInitialPath(
+  projectDir: string,
+  detectedTools: string[]
+): Promise<string> {
+  if (detectedTools.includes('nextjs')) {
+    const nextCssCandidates: string[] = [
+      './src/app/globals.css',
+      './app/globals.css',
+    ];
+    for (const cssCandidate of nextCssCandidates) {
+      if (await fs.pathExists(path.join(projectDir, cssCandidate))) {
+        return cssCandidate;
+      }
+    }
+    return nextCssCandidates[0];
+  }
+
+  if (detectedTools.includes('vite')) {
+    const viteCssPath = './src/index.css';
+    if (await fs.pathExists(path.join(projectDir, viteCssPath))) {
+      return viteCssPath;
+    }
+    return viteCssPath;
+  }
+
+  return './src/styles.css';
+}
+
+async function promptTailwindCSSFile({
+  projectDir,
+  detectedTools,
+}: {
+  projectDir: string;
+  detectedTools: string[];
+}): Promise<{ cssPath: string | null }> {
   const writeCSSResult = await confirm({ message: 'Write Tailwind CSS file?' });
   handlePromptCancel(writeCSSResult);
   const writeCSS: boolean = writeCSSResult as boolean;
 
   let cssPath: string | null = null;
   if (writeCSS) {
+    const initialCssPath: string = await resolveTailwindCssInitialPath(
+      projectDir,
+      detectedTools
+    );
     const cssPathResult = await text({
       message: 'Where would you like to write the Tailwind CSS file?',
-      initialValue: './src/styles.css',
+      initialValue: initialCssPath,
     });
     handlePromptCancel(cssPathResult);
     cssPath = cssPathResult as string;
@@ -384,15 +433,18 @@ Continue?`,
     const selectedToolsResult = await promptTools();
     handlePromptCancel(selectedToolsResult);
     const selectedTools: string[] = selectedToolsResult as string[];
+    const detected: string[] = await detectProjectTools(resolvedDir);
 
     const tailwindSettings = selectedTools.includes('tailwind')
-      ? await promptTailwindCSSFile()
+      ? await promptTailwindCSSFile({
+          projectDir: resolvedDir,
+          detectedTools: detected,
+        })
       : null;
 
     const includeHooksResult = await promptCustomHooks();
     handlePromptCancel(includeHooksResult);
     const includeHooks: boolean = includeHooksResult as boolean;
-    const detected: string[] = await detectProjectTools(resolvedDir);
     const packageManager: string = await detectPackageManager(targetDir ?? '.');
     const dependencies: string[] = calculateDependencies(
       selectedTools,
