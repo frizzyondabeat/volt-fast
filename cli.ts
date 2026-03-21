@@ -172,6 +172,9 @@ function calculateDependencies(
       deps.push('prettier-plugin-tailwindcss');
     }
   }
+  if (selectedTools.includes('husky')) {
+    deps.push('husky');
+  }
   return deps;
 }
 
@@ -212,6 +215,7 @@ async function promptTools(): Promise<string[] | symbol> {
       { value: 'tailwind', label: 'Tailwind' },
       { value: 'eslint', label: 'ESLint' },
       { value: 'prettier', label: 'Prettier' },
+      { value: 'husky', label: 'Husky' },
       { value: 'shadcn', label: 'Shadcn UI' },
     ],
   });
@@ -390,6 +394,27 @@ async function promptTailwindCSSFile({
   return { cssPath };
 }
 
+async function generateHuskyConfig(): Promise<[string, string][]> {
+  return [
+    ['.husky/pre-commit', 'pnpm lint\npnpm format:fix\n'],
+    ['.husky/pre-push', 'pnpm build\n'],
+    ['.husky/commit-msg', 'pnpx commitlint --edit $1\n'],
+  ];
+}
+
+async function configureHusky(projectDir: string): Promise<void> {
+  try {
+    await execa('git', ['config', 'core.hooksPath', '.husky'], {
+      cwd: projectDir,
+    });
+    consola.success('Configured Git hooks path to .husky.');
+  } catch {
+    consola.warn(
+      'Could not configure Git hooks path automatically. Run "git config core.hooksPath .husky" in your project.'
+    );
+  }
+}
+
 async function copyCustomHooks(projectDir: string): Promise<void> {
   const hooksSrc: string = path.join(__dirname, '../templates', 'hooks');
   const hooksDest: string = path.join(projectDir, './hooks');
@@ -420,7 +445,7 @@ const setupCommand = new Command('setup')
 
     const proceedWithOverride = await confirm({
       message: `Depending on which tools you enable, we will OVERRIDE these files with our own config:
-.eslintrc.cjs, prettier.config.cjs, postcss.config.cjs, ./src/styles.css
+.eslintrc.cjs, prettier.config.cjs, postcss.config.cjs, ./src/styles.css, .husky/pre-commit, .husky/pre-push, .husky/commit-msg
 
 Continue?`,
     });
@@ -479,6 +504,10 @@ Continue?`,
     }
     if (selectedTools.includes('eslint')) {
       await createFiles('ESLint', generateEslintConfig);
+    }
+    if (selectedTools.includes('husky')) {
+      await createFiles('Husky', generateHuskyConfig);
+      await configureHusky(resolvedDir);
     }
     if (includeHooks) {
       await copyCustomHooks(resolvedDir);
