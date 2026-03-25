@@ -41,5 +41,9 @@
     "@types/react": "^19.0.8",
     "@types/strip-json-comments": "^3.0.0",
     "typescript": "^5.7.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/frizzyondabeat/volt-fast.git"
   }
 }

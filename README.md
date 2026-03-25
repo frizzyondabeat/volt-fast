@@ -1,10 +1,39 @@
-# @frizzyondabeat/volt-fast
-
 <p align="center">
-  <img src="./assets/voltfast.png" alt="Volt Fast logo" width="420" />
+  <img src="https://res.cloudinary.com/dhu3lcuny/image/upload/v1774426075/voltfast-logo-big_v9e8ir.png" alt="Volt Fast logo" width="420" />
 </p>
 
-A fast interactive CLI to scaffold frontend tooling and starter config files into an existing project.
+<!-- <h1 align="center">@frizzyondabeat/volt-fast</h1> -->
+
+<h3 align="center">
+  A fast interactive CLI to scaffold frontend tooling and starter config files into an existing project.
+</h3>
+
+<p align="center">
+  <a href="https://voltfast.vercel.app">Website</a>
+  •
+   <a href="https://voltfast.vercel.app/docs">Documentation</a>
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/@frizzyondabeat/volt-fast">
+    <img src="https://img.shields.io/npm/v/@frizzyondabeat/volt-fast?style=flat-square" alt="npm version" />
+  </a>
+  <a href="https://www.npmjs.com/package/@frizzyondabeat/volt-fast">
+    <img src="https://img.shields.io/npm/dm/@frizzyondabeat/volt-fast?style=flat-square" alt="npm downloads" />
+  </a>
+  <img src="https://img.shields.io/badge/node-%3E%3D18-brightgreen?style=flat-square" alt="node >=18" />
+  <img src="https://img.shields.io/badge/license-ISC-blue?style=flat-square" alt="license ISC" />
+</p>
+
+## Table of Contents
+
+- [Features](#features)
+- [Requirements](#requirements)
+- [Quick Start](#quick-start)
+- [Command](#command)
+- [What It Generates](#what-it-generates)
+- [Typical Flow](#typical-flow)
+- [License](#license)
 
 ## Features
 
