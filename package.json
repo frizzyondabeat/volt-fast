@@ -1,6 +1,6 @@
 {
   "name": "@frizzyondabeat/volt-fast",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "a CLI tool for initial project setups and configurations including essential hooks and scripts",
   "type": "module",
   "bin": {
@@ -45,5 +45,6 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/frizzyondabeat/volt-fast.git"
-  }
+  },
+  "homepage": "https://voltfast.vercel.app/"
 }
