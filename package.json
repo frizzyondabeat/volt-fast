@@ -12,39 +12,42 @@
   ],
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "clean": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\"",
+    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
     "build": "pnpm clean && tsc",
     "prepack": "pnpm build"
   },
   "keywords": [],
-  "author": "Efeoghene Omonigho",
+  "author": "Efeoghene Omonigho <omonigho.efeoghene@outlook.com> (https://efeoghene-omonigho.vercel.app)",
   "license": "ISC",
   "packageManager": "pnpm@9.15.4+sha512.b2dc20e2fc72b3e18848459b37359a32064663e5627a51e4c74b2c29dd8e8e0491483c3abb40789cfd578bf362fb6ba8261b05f0387d76792ed6e23ea3b1b6a0",
   "dependencies": {
     "@antfu/ni": "^23.3.1",
-    "@clack/core": "^0.4.1",
-    "@clack/prompts": "^0.10.0",
+    "@clack/core": "^0.4.2",
+    "@clack/prompts": "^0.10.1",
     "boxen": "^8.0.1",
     "colorette": "^2.0.20",
     "commander": "^13.1.0",
-    "consola": "^3.4.0",
-    "execa": "^9.5.2",
-    "fs-extra": "^11.3.0",
+    "consola": "^3.4.2",
+    "execa": "^9.6.1",
+    "fs-extra": "^11.3.4",
     "gradient-string": "^3.0.0",
     "ora": "^8.2.0",
-    "prettier": "^3.5.1",
+    "prettier": "^3.8.1",
     "strip-json-comments": "^5.0.3"
   },
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",
-    "@types/node": "^22.13.1",
-    "@types/react": "^19.0.8",
-    "@types/strip-json-comments": "^3.0.0",
-    "typescript": "^5.7.3"
+    "@types/node": "^22.19.17",
+    "@types/react": "^19.2.14",
+    "typescript": "^5.9.3"
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/frizzyondabeat/volt-fast.git"
   },
-  "homepage": "https://voltfast.vercel.app/"
+  "homepage": "https://voltfast.dev/",
+  "bugs": {
+    "url": "https://github.com/frizzyondabeat/volt-fast/issues",
+    "email": "omonigho.efeoghene@outlook.com"
+  }
 }

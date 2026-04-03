@@ -28,3 +28,8 @@ Thumbs.db
 
 # local tooling
 .qodo/
+
+# Claude
+.claude/
+CLAUDE.md
+AUDIT.md
