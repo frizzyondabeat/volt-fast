@@ -17,6 +17,7 @@ import {
   generateHuskyConfig,
   generatePrettierConfig,
   generateTailwindConfig,
+  generateTestConfig,
 } from './src/generators/index.js';
 import type {
   FilenameConvention,
@@ -26,6 +27,8 @@ import type {
 } from './src/generators/types.js';
 import { calculateDependencies } from './src/utils/calculate-deps.js';
 import { detectPackageManager, detectProjectTools } from './src/utils/detect-project.js';
+import { calculateTestDependencies, testScripts } from './src/utils/test-deps.js';
+import type { TestFramework, TestRunner } from './src/utils/test-deps.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -41,6 +44,28 @@ function loadPkg(): { name?: string; version?: string; description?: string } {
       description: 'Configure your frontend project with ease',
     };
   }
+}
+
+function printBanner(subtitle: string): void {
+  const G = '\x1b[48;2;191;255;0m  \x1b[0m';   // lime green block
+  const D = '\x1b[48;2;58;76;0m  \x1b[0m';     // dark bolt block
+  const _ = '  ';                               // empty (terminal bg)
+  const logo = [
+    `${_}${_}${G}${G}${G}${G}${G}${G}${_}${_}`,
+    `${_}${G}${G}${G}${G}${G}${G}${G}${G}${_}`,
+    `${G}${G}${G}${G}${G}${D}${D}${D}${G}${G}`,
+    `${G}${G}${G}${G}${D}${D}${D}${G}${G}${G}`,
+    `${G}${G}${G}${D}${D}${D}${G}${G}${G}${G}`,
+    `${G}${D}${D}${D}${D}${D}${D}${D}${G}${G}`,
+    `${G}${G}${G}${D}${D}${D}${G}${G}${G}${G}`,
+    `${G}${G}${D}${D}${D}${G}${G}${G}${G}${G}`,
+    `${_}${G}${G}${G}${G}${G}${G}${G}${G}${_}`,
+    `${_}${_}${G}${G}${G}${G}${G}${G}${_}${_}`,
+  ].join('\n');
+  const { version } = loadPkg();
+  console.log('\n' + logo + '\n');
+  console.log(bold(white('Volt-fast')) + dim(white(` v${version ?? 'unknown'}`)));
+  console.log(dim(white(`${subtitle}\n`)));
 }
 
 function handlePromptCancel(
@@ -458,25 +483,7 @@ const setupCommand = new Command('setup')
       const yes: boolean = options?.yes ?? false;
       const dryRun: boolean = options?.dryRun ?? false;
 
-      const G = '\x1b[48;2;191;255;0m  \x1b[0m';   // lime green block
-      const D = '\x1b[48;2;58;76;0m  \x1b[0m';     // dark bolt block
-      const _ = '  ';                               // empty (terminal bg)
-      const logo = [
-        `${_}${_}${G}${G}${G}${G}${G}${G}${_}${_}`,
-        `${_}${G}${G}${G}${G}${G}${G}${G}${G}${_}`,
-        `${G}${G}${G}${G}${G}${D}${D}${D}${G}${G}`,
-        `${G}${G}${G}${G}${D}${D}${D}${G}${G}${G}`,
-        `${G}${G}${G}${D}${D}${D}${G}${G}${G}${G}`,
-        `${G}${D}${D}${D}${D}${D}${D}${D}${G}${G}`,
-        `${G}${G}${G}${D}${D}${D}${G}${G}${G}${G}`,
-        `${G}${G}${D}${D}${D}${G}${G}${G}${G}${G}`,
-        `${_}${G}${G}${G}${G}${G}${G}${G}${G}${_}`,
-        `${_}${_}${G}${G}${G}${G}${G}${G}${_}${_}`,
-      ].join('\n');
-      console.log('\n' + logo + '\n');
-      const { version } = loadPkg();
-      console.log(bold(white('Volt-fast')) + dim(white(` v${version ?? 'unknown'}`)));
-      console.log(dim(white(`Let's set up your project!\n`)));
+      printBanner(`Let's set up your project!`);
 
       if (dryRun) {
         consola.info('[dry-run] No files will be written or commands executed.\n');
@@ -591,16 +598,19 @@ Continue?`,
 
       // --- Build dependency list ---
       const extraDeps: string[] = [];
-      if (huskySettings?.runTestsOnCommit) {
-        if (huskySettings.testRunner === 'vitest') {
-          extraDeps.push('vitest');
-        }
-        if (huskySettings.testRunner === 'jest') {
-          extraDeps.push('jest');
-          if (detected.includes('typescript')) {
-            extraDeps.push('ts-jest', '@types/jest');
-          }
-        }
+      if (huskySettings?.runTestsOnCommit && huskySettings.testRunner) {
+        const testFramework: TestFramework = detected.includes('nextjs')
+          ? 'nextjs'
+          : detected.includes('vite')
+            ? 'vite'
+            : 'generic';
+        extraDeps.push(
+          ...calculateTestDependencies(
+            testFramework,
+            huskySettings.testRunner,
+            detected.includes('typescript')
+          )
+        );
       }
 
       const dependencies: string[] = Array.from(
@@ -657,9 +667,9 @@ Continue?`,
         if (huskySettings?.runFormatOnCommit) {
           scriptsToEnsure['format:fix'] = 'prettier . --write';
         }
-        if (huskySettings?.runTestsOnCommit) {
-          scriptsToEnsure['test'] =
-            huskySettings.testRunner === 'vitest' ? 'vitest' : 'jest';
+        if (huskySettings?.runTestsOnCommit && huskySettings.testRunner) {
+          // Add the full set of test scripts (test, test:run/test:watch, test:coverage)
+          Object.assign(scriptsToEnsure, testScripts(huskySettings.testRunner));
         }
         if (Object.keys(scriptsToEnsure).length > 0 && !dryRun) {
           await ensurePackageScripts(resolvedDir, scriptsToEnsure);
@@ -670,6 +680,31 @@ Continue?`,
           await configureHusky(resolvedDir, packageManager);
         }
         await createFiles('Husky', generateHuskyConfig);
+
+        // Scaffold the full test runner config if the user opted into tests during
+        // husky setup and no config already exists.
+        if (huskySettings?.runTestsOnCommit && huskySettings.testRunner) {
+          const testFramework: TestFramework = detected.includes('nextjs')
+            ? 'nextjs'
+            : detected.includes('vite')
+              ? 'vite'
+              : 'generic';
+          const testFiles = await generateTestConfig({
+            framework: testFramework,
+            runner: huskySettings.testRunner,
+            hasTs: detected.includes('typescript'),
+            projectDir: resolvedDir,
+          });
+          for (const [filename, content] of testFiles) {
+            const filePath = path.resolve(resolvedDir, filename);
+            if (dryRun) {
+              consola.info(`[dry-run] Would write ${bold(filename)}`);
+            } else {
+              fs.outputFileSync(filePath, content, 'utf-8');
+              consola.success(`Written ${bold(filename)}`);
+            }
+          }
+        }
       }
       if (includeHooks && !dryRun) {
         await copyCustomHooks(resolvedDir);
@@ -793,6 +828,173 @@ Continue?`,
     }
   });
 
+// ---------------------------------------------------------------------------
+// `volt-fast test [projectdir]`
+// Scaffolds a test runner (Vitest or Jest) following the official guides:
+//   Next.js + Vitest → https://nextjs.org/docs/app/guides/testing/vitest
+//   Next.js + Jest   → https://nextjs.org/docs/app/guides/testing/jest
+//   Vite + Vitest    → https://vitest.dev/guide/
+// ---------------------------------------------------------------------------
+const testCommand = new Command('test')
+  .description('Add a test runner (Vitest or Jest) to an existing project')
+  .argument('[projectdir]', 'Root directory of the target project')
+  .option('--yes', 'Skip prompts — auto-detect framework and use Vitest')
+  .option('--dry-run', 'Preview files that would be written without making changes')
+  .action(async (projectdir?: string, options?: { yes?: boolean; dryRun?: boolean }) => {
+    try {
+      const yes: boolean = options?.yes ?? false;
+      const dryRun: boolean = options?.dryRun ?? false;
+
+      printBanner(`Let's add a test runner to your project!`);
+
+      if (dryRun) {
+        consola.info('[dry-run] No files will be written or commands executed.\n');
+      }
+
+      // --- Resolve target directory ---
+      let targetDir: string;
+      if (yes && projectdir) {
+        targetDir = projectdir;
+        const check = validateDirectory(targetDir);
+        if (check !== true) {
+          consola.error(check);
+          process.exit(1);
+        }
+      } else {
+        const targetDirResult = await promptProjectDirectory({ projectdir });
+        handlePromptCancel(targetDirResult);
+        targetDir = targetDirResult as string;
+      }
+      const resolvedDir = path.resolve(targetDir);
+
+      // --- Detect project tools ---
+      const detected = await detectProjectTools(resolvedDir);
+      const hasTs = detected.includes('typescript');
+
+      // --- Auto-detect framework ---
+      let framework: TestFramework;
+      if (detected.includes('nextjs')) {
+        framework = 'nextjs';
+        consola.info(`Detected framework: ${bold('Next.js')}`);
+      } else if (detected.includes('vite')) {
+        framework = 'vite';
+        consola.info(`Detected framework: ${bold('Vite')}`);
+      } else {
+        framework = 'generic';
+        consola.info(`No Next.js or Vite config detected — using generic setup.`);
+      }
+
+      // --- Select test runner ---
+      let runner: TestRunner;
+      if (yes) {
+        runner = 'vitest';
+        consola.info(`Using default runner: ${bold('Vitest')}`);
+      } else {
+        const runnerResult = await select({
+          message: 'Which test runner would you like to use?',
+          options: [
+            {
+              value: 'vitest',
+              label: 'Vitest',
+              hint: 'recommended — fast, ESM-native, Vite-powered',
+            },
+            {
+              value: 'jest',
+              label: 'Jest',
+              hint: 'battle-tested, large ecosystem',
+            },
+          ],
+          initialValue: 'vitest',
+        });
+        handlePromptCancel(runnerResult);
+        runner = runnerResult as TestRunner;
+      }
+
+      const packageManager = await detectPackageManager(targetDir ?? '.');
+
+      // --- Show what will be installed ---
+      const deps = calculateTestDependencies(framework, runner, hasTs);
+      const scripts = testScripts(runner);
+
+      consola.info(
+        boxen(
+          `Framework : ${framework}\nRunner    : ${runner}\nTypeScript: ${hasTs ? 'yes' : 'no'}\nDeps      : ${deps.join(', ')}\nScripts   : ${Object.entries(scripts).map(([k, v]) => `${k}="${v}"`).join(', ')}`,
+          {
+            title: 'Test setup summary',
+            borderStyle: 'round',
+            borderColor: 'cyan',
+            padding: 1,
+            margin: 1,
+          }
+        )
+      );
+
+      if (!yes && !dryRun) {
+        const proceed = await confirm({ message: 'Continue?' });
+        handlePromptCancel(proceed);
+        if (!proceed) {
+          consola.info('Operation cancelled.');
+          process.exit(0);
+        }
+      }
+
+      // --- Install dependencies ---
+      if (deps.length > 0) {
+        await runCommand(
+          packageManager,
+          'add',
+          ['-D', ...deps],
+          resolvedDir,
+          [
+            'Installing test dependencies',
+            'Test dependencies installed',
+            'Skipped installation. Run the above command manually.',
+          ],
+          dryRun
+        );
+      }
+
+      // --- Generate config files ---
+      const files = await generateTestConfig({ framework, runner, hasTs, projectDir: resolvedDir });
+
+      for (const [filename, content] of files) {
+        const filePath = path.resolve(resolvedDir, filename);
+        if (dryRun) {
+          consola.info(
+            `[dry-run] Would write ${bold(filename)}:\n${content.slice(0, 300)}${content.length > 300 ? '...' : ''}`
+          );
+        } else {
+          fs.outputFileSync(filePath, content, 'utf-8');
+          consola.success(`Written ${bold(filename)}`);
+        }
+      }
+
+      // --- Update package.json scripts ---
+      if (!dryRun) {
+        await ensurePackageScripts(resolvedDir, scripts);
+      } else {
+        consola.info(
+          `[dry-run] Would add scripts: ${Object.entries(scripts).map(([k, v]) => `"${k}": "${v}"`).join(', ')}`
+        );
+      }
+
+      if (dryRun) {
+        consola.success('[dry-run] Preview complete. No files were written.');
+      } else {
+        consola.success(
+          `Test runner configured! Run ${bold(`${packageManager} ${runner === 'vitest' ? 'test:run' : 'test'}`)} to execute your tests.`
+        );
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        consola.error(`Test setup failed: ${error.message}`);
+      } else {
+        consola.error('Test setup failed with an unexpected error.');
+      }
+      process.exit(1);
+    }
+  });
+
 process.on('SIGINT', () => process.exit(0));
 process.on('SIGTERM', () => process.exit(0));
 
@@ -808,6 +1010,7 @@ async function main(): Promise<void> {
       'Output the current CLI version'
     );
   program.addCommand(setupCommand);
+  program.addCommand(testCommand);
   program.parse();
 }
 
