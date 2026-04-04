@@ -11,5 +11,5 @@
     "forceConsistentCasingInFileNames": true,
     "jsx": "preserve"
   },
-  "include": ["cli.ts"]
+  "include": ["cli.ts", "src/**/*"]
 }
