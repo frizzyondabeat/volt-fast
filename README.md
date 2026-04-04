@@ -30,22 +30,27 @@
 - [Features](#features)
 - [Requirements](#requirements)
 - [Quick Start](#quick-start)
-- [Command](#command)
+- [Commands](#commands)
+  - [setup](#volt-fast-setup-projectdir)
+  - [test](#volt-fast-test-projectdir)
 - [What It Generates](#what-it-generates)
-- [Typical Flow](#typical-flow)
+- [Flags](#flags)
 - [License](#license)
 
 ## Features
 
-- Detects project context (Next.js, Vite, and TypeScript)
-- Installs selected tooling dependencies for your package manager
+- Detects project context (Next.js, Vite, TypeScript)
+- Installs selected tooling dependencies using your detected package manager
 - Generates ready-to-use config files for:
   - Tailwind CSS
   - Prettier
-  - ESLint
+  - ESLint (v9 flat config)
+  - Husky git hooks (pre-commit, pre-push, commit-msg)
+  - Commitlint
 - Optionally initializes Shadcn UI with alias configuration
-- Optionally copies custom hooks from the built-in templates
-- Safe interactive flow with confirmations and cancellation handling
+- Scaffolds a test runner (Vitest or Jest) following the official framework guides
+- Non-interactive `--yes` mode for CI pipelines
+- `--dry-run` mode to preview all changes before writing
 
 ## Requirements
 
@@ -73,40 +78,94 @@ npm i -g @frizzyondabeat/volt-fast
 volt-fast setup
 ```
 
-## Command
+## Commands
 
-```bash
-volt-fast setup [projectdir]
-```
+### `volt-fast setup [projectdir]`
 
-- `projectdir` is optional
-- If omitted, the CLI prompts for the target directory
+Installs and configures frontend tooling into an existing project.
+
+- `projectdir` is optional — if omitted, the CLI prompts for the target directory
+- Prompts you to select from: Tailwind CSS, ESLint, Prettier, Husky, Commitlint, Shadcn UI
+- Detects your package manager and installs all required dependencies
+- Writes config files based on your selections and detected project type
+
+**Flow:**
+
+1. Choose target project directory
+2. Select tools to configure
+3. For Husky: choose which hooks to enable (pre-commit lint, pre-push typecheck, commitlint)
+4. For Tailwind: optionally specify the CSS entry file path
+5. Choose a filename convention (kebab-case, camelCase, PascalCase)
+6. CLI installs packages and writes all config files
+7. For Shadcn: patches `tsconfig.json` paths + `vite.config`, then runs `shadcn@latest init`
+
+---
+
+### `volt-fast test [projectdir]`
+
+Scaffolds a test runner into an existing project, following the official framework guides.
+
+- `projectdir` is optional — if omitted, the CLI prompts for the target directory
+- Auto-detects your framework (Next.js → Vite → generic Node)
+- Prompts you to choose Vitest or Jest
+- Aborts without overwriting if a runner config already exists
+
+**What it sets up by framework and runner:**
+
+| Framework | Runner  | Config written              |
+|-----------|---------|-----------------------------|
+| Next.js   | Vitest  | `vitest.config.ts`          |
+| Next.js   | Jest    | `jest.config.ts` + `jest.setup.ts` |
+| Vite      | Vitest  | `vitest.config.ts`          |
+| Vite      | Jest    | `jest.config.ts` + `jest.setup.ts` |
+| Generic   | Vitest  | `vitest.config.ts`          |
+| Generic   | Jest    | `jest.config.ts` + `jest.setup.ts` |
+
+In all cases it also writes `__tests__/example.test.tsx` and adds `test` / `test:watch` / `test:coverage` scripts to `package.json`.
+
+**Flow:**
+
+1. Choose target project directory
+2. CLI detects framework automatically
+3. Choose Vitest or Jest
+4. CLI installs all required dependencies
+5. Config file, optional setup file, and example test are written
+6. `package.json` scripts are updated
 
 ## What It Generates
 
-Depending on your selections, the CLI creates or updates:
+### `setup`
 
-- `.eslintrc.cjs`
-- `prettier.config.cjs`
-- `postcss.config.cjs`
-- Tailwind CSS entry file (default: `./src/styles.css`)
-- `tsconfig.json` alias config for `@/*` (when Shadcn is enabled)
-- `tsconfig.app.json` alias config for `@/*` in Vite projects
-- `vite.config.ts` or `vite.config.js` with `vite-tsconfig-paths` in Vite projects
-- `./hooks/*` custom hooks (when enabled)
+| File | Tool |
+|------|------|
+| `eslint.config.mjs` | ESLint (v9 flat config) |
+| `prettier.config.mjs` | Prettier |
+| `tailwind.css` (or custom path) | Tailwind CSS |
+| `.husky/pre-commit` | Husky |
+| `.husky/pre-push` | Husky |
+| `.husky/commit-msg` | Husky + Commitlint (when both selected) |
+| `commitlint.config.mjs` | Commitlint |
+| `tsconfig.json` path aliases | Shadcn UI |
+| `vite.config.ts` / `vite.config.js` patched | Shadcn UI (Vite projects) |
 
-It also installs relevant dependencies in the target project and can run `shadcn init`.
+### `test`
 
-## Typical Flow
+| File | Notes |
+|------|-------|
+| `vitest.config.ts` or `jest.config.ts` | Runner config |
+| `jest.setup.ts` | Jest only |
+| `__tests__/example.test.tsx` | Starter test file |
+| `package.json` scripts | `test`, `test:watch`, `test:coverage` added |
 
-1. Choose target project directory
-2. Confirm file overwrite warning
-3. Select tools (Tailwind, ESLint, Prettier, Shadcn UI)
-4. Optionally choose Tailwind CSS output path
-5. Optionally include custom hooks
-6. Confirm dependency install command
-7. CLI installs packages and writes files
-8. When selected, CLI configures aliases and runs Shadcn UI initialization
+## Flags
+
+Both `setup` and `test` support the following flags:
+
+| Flag | Description |
+|------|-------------|
+| `--yes` | Non-interactive mode; skips all prompts and uses defaults (all tools, Vitest, kebab-case) |
+| `--tools <csv>` | Comma-separated list of tools to configure, used with `--yes` (e.g. `--tools eslint,prettier,husky`) |
+| `--dry-run` | Runs the full pipeline but writes no files and executes no commands |
 
 ## License
 
