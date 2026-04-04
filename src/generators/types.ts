@@ -10,7 +10,7 @@ export type HuskySettings = {
   runFormatOnCommit: boolean;
   runTestsOnCommit: boolean;
   runBuildOnPush: boolean;
-  testRunner: 'vitest' | 'jest' | null;
+  testRunner: 'vitest' | 'jest' | 'cypress' | null;
 };
 
 export type GeneratorSettings = {

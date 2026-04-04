@@ -2,21 +2,28 @@
  * Calculates the dev-dependency list to install for a test runner setup.
  *
  * Follows the official guides:
- *  - Next.js + Vitest: https://nextjs.org/docs/app/guides/testing/vitest
- *  - Next.js + Jest:   https://nextjs.org/docs/app/guides/testing/jest
- *  - Vite + Vitest:    https://vitest.dev/guide/
+ *  - Next.js + Vitest:  https://nextjs.org/docs/app/guides/testing/vitest
+ *  - Next.js + Jest:    https://nextjs.org/docs/app/guides/testing/jest
+ *  - Vite + Vitest:     https://vitest.dev/guide/
+ *  - Cypress (E2E):     https://docs.cypress.io/app/get-started/install-cypress
+ *  - Cypress (CT/Vite): https://docs.cypress.io/guides/component-testing/react/overview
  *
  * Pure function — no I/O, fully unit-testable.
  */
 
 export type TestFramework = 'nextjs' | 'vite' | 'generic';
-export type TestRunner = 'vitest' | 'jest';
+export type TestRunner = 'vitest' | 'jest' | 'cypress';
 
 export function calculateTestDependencies(
   framework: TestFramework,
   runner: TestRunner,
   hasTs: boolean
 ): string[] {
+  // Cypress ships its own types — single package regardless of framework
+  if (runner === 'cypress') {
+    return ['cypress'];
+  }
+
   if (framework === 'nextjs') {
     if (runner === 'vitest') {
       // https://nextjs.org/docs/app/guides/testing/vitest
@@ -88,6 +95,12 @@ export function testScripts(runner: TestRunner): Record<string, string> {
       test: 'vitest',
       'test:run': 'vitest run',
       'test:coverage': 'vitest run --coverage',
+    };
+  }
+  if (runner === 'cypress') {
+    return {
+      'cy:open': 'cypress open',
+      'cy:run': 'cypress run',
     };
   }
   // Jest

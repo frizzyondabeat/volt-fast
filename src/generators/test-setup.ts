@@ -5,6 +5,9 @@
  *  Next.js + Jest    → https://nextjs.org/docs/app/guides/testing/jest
  *  Vite    + Vitest  → https://vitest.dev/guide/
  *  Vite    + Jest    → ts-jest + jest-environment-jsdom
+ *  Next.js + Cypress → E2E (cypress.config.ts, e2e spec, cypress/ scaffold)
+ *  Vite    + Cypress → Component Testing (framework: react, bundler: vite)
+ *  Generic + Cypress → E2E only
  */
 
 import consola from 'consola';
@@ -39,11 +42,21 @@ async function guardExistingConfig(
     'jest.config.mjs',
     'jest.config.cjs',
   ];
+  const cypressCandidates = [
+    'cypress.config.ts',
+    'cypress.config.js',
+    'cypress.config.mjs',
+    'cypress.config.cjs',
+  ];
 
-  const existing = await findExistingConfig(
-    projectDir,
-    runner === 'vitest' ? vitestCandidates : jestCandidates
-  );
+  const candidates =
+    runner === 'vitest'
+      ? vitestCandidates
+      : runner === 'cypress'
+        ? cypressCandidates
+        : jestCandidates;
+
+  const existing = await findExistingConfig(projectDir, candidates);
 
   if (existing) {
     consola.warn(
@@ -401,6 +414,135 @@ module.exports = config;
 }
 
 // ---------------------------------------------------------------------------
+// Next.js + Cypress (E2E)
+// Guide: https://nextjs.org/docs/app/guides/testing/cypress
+// ---------------------------------------------------------------------------
+async function nextjsCypress(hasTs: boolean): Promise<[string, string][]> {
+  const ext = hasTs ? 'ts' : 'js';
+
+  const cypressConfig = `import { defineConfig } from 'cypress';
+
+export default defineConfig({
+  e2e: {
+    setupNodeEvents(on, config) {
+      // implement node event listeners here
+    },
+  },
+});
+`;
+
+  // cypress/support files are created by `cypress open` on first launch;
+  // we scaffold the minimal support file so the project works headlessly too.
+  const supportFile = `// cypress/support/e2e.${ext}
+// Put global config or imports here. This runs before every test.
+`;
+
+  const exampleSpec = `describe('Home page', () => {
+  it('should navigate to the home page', () => {
+    // Start from the index page
+    cy.visit('http://localhost:3000');
+    cy.get('h1').should('exist');
+  });
+});
+`;
+
+  return [
+    [`cypress.config.${ext}`, cypressConfig],
+    [`cypress/support/e2e.${ext}`, supportFile],
+    [`cypress/e2e/example.cy.${ext}`, exampleSpec],
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// Vite + Cypress (Component Testing)
+// Guide: https://docs.cypress.io/guides/component-testing/react/overview
+// Framework: react, Bundler: vite
+// ---------------------------------------------------------------------------
+async function viteCypress(hasTs: boolean): Promise<[string, string][]> {
+  const ext = hasTs ? 'ts' : 'js';
+  const specExt = hasTs ? 'tsx' : 'jsx';
+
+  const cypressConfig = `import { defineConfig } from 'cypress';
+
+export default defineConfig({
+  component: {
+    devServer: {
+      framework: 'react',
+      bundler: 'vite',
+    },
+  },
+});
+`;
+
+  const supportFile = `// cypress/support/component.${ext}
+// Put global config or imports here. This runs before every component test.
+import './commands';
+`;
+
+  const commandsFile = `// cypress/support/commands.${ext}
+// Add custom commands here.
+// Cypress.Commands.add('myCommand', () => { ... })
+`;
+
+  const exampleSpec = `import { mount } from 'cypress/react';
+
+// Replace with your actual component import
+function ExampleComponent() {
+  return <h1>Hello World</h1>;
+}
+
+describe('ExampleComponent', () => {
+  it('renders correctly', () => {
+    mount(<ExampleComponent />);
+    cy.get('h1').should('contain', 'Hello World');
+  });
+});
+`;
+
+  return [
+    [`cypress.config.${ext}`, cypressConfig],
+    [`cypress/support/component.${ext}`, supportFile],
+    [`cypress/support/commands.${ext}`, commandsFile],
+    [`cypress/component/example.cy.${specExt}`, exampleSpec],
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// Generic + Cypress (E2E only — no framework-specific bundler config)
+// ---------------------------------------------------------------------------
+async function genericCypress(hasTs: boolean): Promise<[string, string][]> {
+  const ext = hasTs ? 'ts' : 'js';
+
+  const cypressConfig = `import { defineConfig } from 'cypress';
+
+export default defineConfig({
+  e2e: {
+    setupNodeEvents(on, config) {
+      // implement node event listeners here
+    },
+  },
+});
+`;
+
+  const supportFile = `// cypress/support/e2e.${ext}
+// Put global config or imports here.
+`;
+
+  const exampleSpec = `describe('example', () => {
+  it('visits the app', () => {
+    cy.visit('http://localhost:3000');
+  });
+});
+`;
+
+  return [
+    [`cypress.config.${ext}`, cypressConfig],
+    [`cypress/support/e2e.${ext}`, supportFile],
+    [`cypress/e2e/example.cy.${ext}`, exampleSpec],
+  ];
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 async function detectViteConfigExt(
@@ -426,17 +568,18 @@ export async function generateTestConfig(
   if (await guardExistingConfig(projectDir, runner)) return [];
 
   if (framework === 'nextjs') {
-    return runner === 'vitest'
-      ? nextjsVitest(hasTs)
-      : nextjsJest(hasTs);
+    if (runner === 'vitest') return nextjsVitest(hasTs);
+    if (runner === 'cypress') return nextjsCypress(hasTs);
+    return nextjsJest(hasTs);
   }
 
   if (framework === 'vite') {
-    return runner === 'vitest'
-      ? viteVitest(projectDir, hasTs)
-      : viteJest(hasTs);
+    if (runner === 'vitest') return viteVitest(projectDir, hasTs);
+    if (runner === 'cypress') return viteCypress(hasTs);
+    return viteJest(hasTs);
   }
 
   // Generic
+  if (runner === 'cypress') return genericCypress(hasTs);
   return runner === 'vitest' ? genericVitest(hasTs) : genericJest(hasTs);
 }

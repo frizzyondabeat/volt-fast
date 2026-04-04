@@ -331,7 +331,7 @@ async function promptHuskySettings(): Promise<HuskySettings> {
   let runFormatOnCommit = false;
   let runTestsOnCommit = false;
   let runBuildOnPush = false;
-  let testRunner: 'vitest' | 'jest' | null = null;
+  let testRunner: 'vitest' | 'jest' | 'cypress' | null = null;
 
   if (enablePreCommit) {
     const formatResult = await confirm({
@@ -350,12 +350,13 @@ async function promptHuskySettings(): Promise<HuskySettings> {
       const testRunnerResult = await select({
         message: 'Which test runner should we set up?',
         options: [
-          { value: 'vitest', label: 'Vitest' },
-          { value: 'jest', label: 'Jest' },
+          { value: 'vitest', label: 'Vitest', hint: 'unit / component — fast, ESM-native' },
+          { value: 'jest', label: 'Jest', hint: 'unit / component — battle-tested' },
+          { value: 'cypress', label: 'Cypress', hint: 'E2E (Next.js) or component testing (Vite)' },
         ],
       });
       handlePromptCancel(testRunnerResult);
-      testRunner = testRunnerResult as 'vitest' | 'jest';
+      testRunner = testRunnerResult as 'vitest' | 'jest' | 'cypress';
     }
   }
 
@@ -896,12 +897,17 @@ const testCommand = new Command('test')
             {
               value: 'vitest',
               label: 'Vitest',
-              hint: 'recommended — fast, ESM-native, Vite-powered',
+              hint: 'recommended — fast, ESM-native, unit/component',
             },
             {
               value: 'jest',
               label: 'Jest',
-              hint: 'battle-tested, large ecosystem',
+              hint: 'battle-tested, large ecosystem, unit/component',
+            },
+            {
+              value: 'cypress',
+              label: 'Cypress',
+              hint: 'E2E (Next.js) or component testing (Vite)',
             },
           ],
           initialValue: 'vitest',
