@@ -43,6 +43,8 @@ jobs:
         env:
           PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
           ANCHORE_SBOM_ACTION_PRIOR_ARTIFACT: sbom-${{ github.sha }}.spdx.json
+          GRYPE_DB_AUTO_UPDATE: "true"
+          GRYPE_DB_MAX_ALLOWED_BUILT_AGE: 336h
         with:
           sbom: sbom.spdx.json
           fail-build: true
