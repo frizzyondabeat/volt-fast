@@ -28,32 +28,24 @@ jobs:
       - name: Clear stale Grype DB cache
         run: rm -rf ~/.cache/grype
 
-      - name: Generate SBOM with Syft
-        uses: anchore/sbom-action@v0
-        with:
-          path: .
-          format: spdx-json
-          output-file: sbom.spdx.json
-          artifact-name: sbom-${{ github.sha }}.spdx.json
+      - name: Install Syft
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: Generate SBOM
+        run: |
+          syft . -o cyclonedx-json > sbom.json
+
+      - name: Install Grype
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
 
       - name: Scan for vulnerabilities with Grype
-        uses: anchore/scan-action@v3
         id: grype
         continue-on-error: true
-        env:
-          PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
-          ANCHORE_SBOM_ACTION_PRIOR_ARTIFACT: sbom-${{ github.sha }}.spdx.json
-          GRYPE_DB_AUTO_UPDATE: "true"
-          GRYPE_DB_MAX_ALLOWED_BUILT_AGE: 336h
-        with:
-          sbom: sbom.spdx.json
-          fail-build: true
-          severity-cutoff: high
-          output-format: sarif
-          update-db: true
-          only-fixed: false
-          add-cpes-if-none: false
-          by-cve: false
+        run: |
+          grype sbom:sbom.json -o sarif > results.sarif
+          grype sbom:sbom.json --fail-on high
 
       - name: Upload SARIF to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v4
