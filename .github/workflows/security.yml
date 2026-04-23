@@ -25,19 +25,22 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Clear stale Grype DB cache
+        run: rm -rf ~/.cache/grype
+
       - name: Generate SBOM with Syft
         uses: anchore/sbom-action@v0
         with:
           path: .
-          format: cyclonedx-json
-          output-file: sbom.cyclonedx.json
-          artifact-name: sbom-${{ github.sha }}.cyclonedx.json
+          format: spdx-json
+          output-file: sbom.spdx.json
+          artifact-name: sbom-${{ github.sha }}.spdx.json
 
       - name: Scan for vulnerabilities with Grype
         uses: anchore/scan-action@v3
         id: grype
         with:
-          sbom: sbom.cyclonedx.json
+          sbom: sbom.spdx.json
           fail-build: true
           severity-cutoff: high
           output-format: sarif
