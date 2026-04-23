@@ -39,14 +39,28 @@ jobs:
       - name: Scan for vulnerabilities with Grype
         uses: anchore/scan-action@v3
         id: grype
+        continue-on-error: true
+        env:
+          PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+          ANCHORE_SBOM_ACTION_PRIOR_ARTIFACT: sbom-${{ github.sha }}.spdx.json
         with:
           sbom: sbom.spdx.json
           fail-build: true
           severity-cutoff: high
           output-format: sarif
+          update-db: true
+          only-fixed: false
+          add-cpes-if-none: false
+          by-cve: false
 
       - name: Upload SARIF to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
-          sarif_file: ${{ steps.grype.outputs.sarif }}
+          sarif_file: ./results.sarif
+
+      - name: Fail job if Grype found high-severity vulnerabilities
+        if: steps.grype.outcome == 'failure'
+        run: |
+          echo "Grype scan failed: high-severity vulnerabilities detected."
+          exit 1
