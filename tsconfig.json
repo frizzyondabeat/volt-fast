@@ -11,5 +11,5 @@
     "forceConsistentCasingInFileNames": true,
     "jsx": "preserve"
   },
-  "include": ["cli.ts", "src/**/*"]
+  "include": ["cli.ts", "mcp-server.ts", "src/**/*"]
 }

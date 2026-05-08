@@ -4,7 +4,8 @@
   "description": "a CLI tool for initial project setups and configurations including essential hooks and scripts",
   "type": "module",
   "bin": {
-    "volt-fast": "./dist/cli.js"
+    "volt-fast": "./dist/cli.js",
+    "volt-fast-mcp": "./dist/mcp-server.js"
   },
   "files": [
     "dist",
@@ -48,6 +49,7 @@
     "@antfu/ni": "^23.3.1",
     "@clack/core": "^0.4.2",
     "@clack/prompts": "^0.10.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "boxen": "^8.0.1",
     "colorette": "^2.0.20",
     "commander": "^13.1.0",
@@ -57,7 +59,8 @@
     "gradient-string": "^3.0.0",
     "ora": "^8.2.0",
     "prettier": "^3.8.1",
-    "strip-json-comments": "^5.0.3"
+    "strip-json-comments": "^5.0.3",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",
