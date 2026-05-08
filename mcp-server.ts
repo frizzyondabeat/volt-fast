@@ -40,6 +40,13 @@ const server = new McpServer({
     '• plan_setup — generate all config file contents and the exact install command for any combination of tools. ' +
     '• plan_test_setup — generate test runner configs, package.json scripts, and the install command for Vitest, Jest, or Cypress. ' +
     'All tools are advisory: they return file contents and commands for you to apply — nothing is written to disk.',
+  websiteUrl: 'https://voltfast.dev',
+  icons: [
+    {
+      src: 'https://voltfast.dev/favicon.ico',
+      mimeType: 'image/x-icon',
+    },
+  ],
 });
 
 // ─── Tool 1: detect_project ────────────────────────────────────────────────
