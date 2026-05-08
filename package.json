@@ -1,6 +1,6 @@
 {
   "name": "@frizzyondabeat/volt-fast",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "a CLI tool for initial project setups and configurations including essential hooks and scripts",
   "type": "module",
   "bin": {
