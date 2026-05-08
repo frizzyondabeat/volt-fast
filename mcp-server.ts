@@ -178,7 +178,7 @@ server.registerTool(
 
     if (tools.includes('husky')) {
       notes.push(
-        'husky requires initialising git hooks after install: npx husky init (run inside the project directory after installing husky)'
+        'husky requires initialising git hooks before writing hook files: run `npx husky init` inside the project directory first, then write the .husky/ hook files from the configs above'
       );
     }
 
@@ -217,14 +217,18 @@ server.registerTool(
     inputSchema: {
       projectDir: z
         .string()
-        .optional()
         .describe(
-          'Absolute path to the project directory. When provided, the framework is auto-detected from config files.'
+          'Absolute path to the project directory. The framework and package manager are auto-detected from config files in this directory.'
         ),
       framework: z
         .enum(['nextjs', 'vite', 'generic'])
         .optional()
-        .describe("Target framework. Auto-detected when projectDir is provided. Falls back to 'generic'."),
+        .describe("Target framework. Auto-detected from projectDir when omitted. Falls back to 'generic'."),
+      packageManager: z
+        .enum(['npm', 'yarn', 'pnpm', 'bun'])
+        .optional()
+        .default('npm')
+        .describe('Package manager to use in the install command. Auto-detected from projectDir when not provided.'),
       runner: z
         .enum(['vitest', 'jest', 'cypress'])
         .default('vitest')
@@ -232,16 +236,16 @@ server.registerTool(
       hasTs: z.boolean().default(true).describe('Whether the project uses TypeScript (default: true)'),
     },
   },
-  async ({ projectDir, framework: inputFramework, runner, hasTs }) => {
+  async ({ projectDir, framework: inputFramework, packageManager: inputPm, runner, hasTs }) => {
     let framework: TestFramework = inputFramework ?? 'generic';
-    let pm = 'npm';
+    let pm: string = inputPm ?? 'npm';
 
-    if (projectDir && !inputFramework) {
-      const [detected, detectedPm] = await Promise.all([
-        detectProjectTools(projectDir),
-        detectPackageManager(projectDir),
-      ]);
-      pm = detectedPm;
+    const [detected, detectedPm] = await Promise.all([
+      detectProjectTools(projectDir),
+      detectPackageManager(projectDir),
+    ]);
+    if (!inputPm) pm = detectedPm;
+    if (!inputFramework) {
       framework = detected.includes('nextjs') ? 'nextjs' : detected.includes('vite') ? 'vite' : 'generic';
     }
 
@@ -251,7 +255,7 @@ server.registerTool(
       framework,
       runner: runner as TestRunner,
       hasTs,
-      projectDir: projectDir ?? process.cwd(),
+      projectDir,
     });
 
     const notes: string[] = [];

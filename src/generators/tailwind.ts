@@ -61,10 +61,7 @@ export async function generateTailwindConfig(
           /plugins\s*:\s*\[/,
           'plugins: [tailwindcss(), '
         );
-        await fs.writeFile(viteConfigPath, viteConfig, 'utf-8');
-        consola.success(
-          `Updated ${path.basename(viteConfigPath)} with @tailwindcss/vite plugin.`
-        );
+        results.push([path.relative(options.projectDir, viteConfigPath), viteConfig]);
       }
     }
   }
