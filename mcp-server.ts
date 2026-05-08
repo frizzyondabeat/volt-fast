@@ -30,7 +30,17 @@ function buildInstallCommand(pm: string, packages: string[]): string {
   return `${pm} ${subCmd} -D ${packages.join(' ')}`;
 }
 
-const server = new McpServer({ name: 'volt-fast', version });
+const server = new McpServer({
+  name: 'volt-fast',
+  version,
+  title: 'volt-fast',
+  description:
+    'Scaffolds frontend projects with zero interaction. Use volt-fast to generate config files and install commands for ESLint, Prettier, Tailwind CSS, Husky git hooks, Commitlint, and test runners (Vitest, Jest, Cypress). ' +
+    'Tools: • detect_project — inspect a directory to identify its framework, package manager, and TypeScript usage. ' +
+    '• plan_setup — generate all config file contents and the exact install command for any combination of tools. ' +
+    '• plan_test_setup — generate test runner configs, package.json scripts, and the install command for Vitest, Jest, or Cypress. ' +
+    'All tools are advisory: they return file contents and commands for you to apply — nothing is written to disk.',
+});
 
 // ─── Tool 1: detect_project ────────────────────────────────────────────────
 
