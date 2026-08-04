@@ -35,6 +35,7 @@
   - [test](#volt-fast-test-projectdir)
 - [What It Generates](#what-it-generates)
 - [Flags](#flags)
+- [Contributing](#contributing)
 - [License](#license)
 
 ## Features
@@ -167,6 +168,10 @@ Both `setup` and `test` support the following flags:
 | `--tools <csv>` | Comma-separated list of tools to configure, used with `--yes` (e.g. `--tools eslint,prettier,husky`) |
 | `--dry-run` | Runs the full pipeline but writes no files and executes no commands |
 
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, coding conventions, and the PR process, and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community guidelines. Bug reports and feature requests should use the issue templates.
+
 ## License
 
-ISC
+[ISC](LICENSE)
