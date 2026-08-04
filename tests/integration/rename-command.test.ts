@@ -33,7 +33,7 @@ describe('fix-filenames integration', () => {
       `export function MyComponent() { return null; }\n`
     );
     fs.outputFileSync(
-      path.join(dir, 'src/App.tsx'),
+      path.join(dir, 'src/entry.tsx'),
       `import { MyComponent } from './MyComponent';\nexport const App = MyComponent;\n`
     );
 
@@ -46,11 +46,11 @@ describe('fix-filenames integration', () => {
     expect(fs.existsSync(path.join(dir, 'src/my-component.tsx'))).toBe(true);
     expect(fs.existsSync(path.join(dir, 'src/MyComponent.tsx'))).toBe(false);
 
-    const appContent = fs.readFileSync(path.join(dir, 'src/App.tsx'), 'utf-8');
+    const appContent = fs.readFileSync(path.join(dir, 'src/entry.tsx'), 'utf-8');
     expect(appContent).toContain("from './my-component'");
 
     const applied = result.applied.find((r) => r.from === 'src/MyComponent.tsx');
-    expect(applied?.referencesUpdated).toContain('src/App.tsx');
+    expect(applied?.referencesUpdated).toContain('src/entry.tsx');
   });
 
   it('rewrites a barrel re-export', async () => {
@@ -118,6 +118,72 @@ describe('fix-filenames integration', () => {
     expect(plan.conflicts).toHaveLength(1);
     expect(fs.existsSync(path.join(dir, 'src/MyComponent.tsx'))).toBe(true);
     expect(fs.existsSync(path.join(dir, 'src/my-component.tsx'))).toBe(true);
+  });
+
+  it('applies a case-only rename and updates the referencing import (regression: Windows/macOS treat App.tsx and app.tsx as the same path)', async () => {
+    const dir = makeTmpDir();
+    fs.outputFileSync(path.join(dir, 'src/App.tsx'), `export function App() { return null; }\n`);
+    fs.outputFileSync(
+      path.join(dir, 'src/main.tsx'),
+      `import { App } from './App';\nApp();\n`
+    );
+
+    const { plan, result } = await runFixFilenames(dir, false);
+
+    expect(plan.renames).toContainEqual({ from: 'src/App.tsx', to: 'src/app.tsx' });
+    expect(fs.existsSync(path.join(dir, 'src/app.tsx'))).toBe(true);
+
+    const mainContent = fs.readFileSync(path.join(dir, 'src/main.tsx'), 'utf-8');
+    expect(mainContent).not.toContain("from './App'");
+    expect(mainContent).toContain("from './app'");
+
+    const applied = result.applied.find((r) => r.from === 'src/App.tsx');
+    expect(applied?.referencesUpdated).toContain('src/main.tsx');
+  });
+
+  it('rewrites a plain CSS import specifier when the stylesheet is renamed', async () => {
+    const dir = makeTmpDir();
+    fs.outputFileSync(path.join(dir, 'src/MyStyle.css'), `.a { color: red; }\n`);
+    fs.outputFileSync(
+      path.join(dir, 'src/App.tsx'),
+      `import './MyStyle.css';\nexport const App = () => null;\n`
+    );
+
+    await runFixFilenames(dir, false);
+
+    expect(fs.existsSync(path.join(dir, 'src/my-style.css'))).toBe(true);
+    const appContent = fs.readFileSync(path.join(dir, 'src/app.tsx'), 'utf-8');
+    expect(appContent).toContain("import './my-style.css'");
+  });
+
+  it('does not cross-contaminate a same-basename sibling pair (regression: App.tsx + App.css both renaming to app.*)', async () => {
+    const dir = makeTmpDir();
+    fs.outputFileSync(
+      path.join(dir, 'src/App.tsx'),
+      `import './App.css';\nimport { UserProfile } from './components/UserProfile';\nexport const App = () => UserProfile;\n`
+    );
+    fs.outputFileSync(path.join(dir, 'src/App.css'), `.a { color: red; }\n`);
+    fs.outputFileSync(
+      path.join(dir, 'src/components/UserProfile.tsx'),
+      `export const UserProfile = 1;\n`
+    );
+    fs.outputFileSync(
+      path.join(dir, 'src/main.tsx'),
+      `import App from './App';\nApp;\n`
+    );
+
+    await runFixFilenames(dir, false);
+
+    expect(fs.existsSync(path.join(dir, 'src/app.css'))).toBe(true);
+    expect(fs.existsSync(path.join(dir, 'src/app.tsx'))).toBe(true);
+
+    const appContent = fs.readFileSync(path.join(dir, 'src/app.tsx'), 'utf-8');
+    // The CSS import must point at the renamed stylesheet, not at itself.
+    expect(appContent).toContain("import './app.css'");
+    expect(appContent).toContain("from './components/user-profile'");
+
+    const mainContent = fs.readFileSync(path.join(dir, 'src/main.tsx'), 'utf-8');
+    expect(mainContent).toContain("from './app'");
   });
 
   it('respects a nested .gitignore', async () => {

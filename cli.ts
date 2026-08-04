@@ -1164,12 +1164,6 @@ const fixFilenamesCommand = new Command('fix-filenames')
           `Done. Renamed ${plan.renames.length} file(s), updated imports in ${importsUpdated} file(s).${plan.conflicts.length > 0 ? ` Skipped ${plan.conflicts.length} conflict(s) — see above.` : ''}`
         );
 
-        if (result.skippedNoRewrite.length > 0) {
-          consola.info(
-            `Renamed without import rewriting (no import concept for these file types): ${result.skippedNoRewrite.map((r) => r.to).join(', ')}`
-          );
-        }
-
         if (result.manualCheckNeeded.length > 0) {
           consola.warn(
             boxen(result.manualCheckNeeded.join('\n'), {

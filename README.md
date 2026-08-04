@@ -143,7 +143,7 @@ Scans a project's source files, renames any that don't match a chosen naming con
 - Respects the target project's `.gitignore` (including nested ones), plus always skips `node_modules` and `.git`
 - Renames + rewrites relative imports, barrel re-exports, dynamic `import()`, and `require()` calls via [ts-morph](https://ts-morph.com)
 - Files with colliding target names (e.g. `MyComponent.tsx` and `my-component.tsx` both resolving to `my-component.tsx`) are reported and skipped, never partially renamed
-- `.css`/`.scss` files are renamed but have no import-rewriting concept, so they're moved as-is
+- `.css`/`.scss` files are renamed and their referencing `import './old-name.css'` specifiers are rewritten too
 
 **Flow:**
 
