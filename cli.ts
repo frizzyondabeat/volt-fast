@@ -815,6 +815,12 @@ Continue?`,
         }
       }
 
+      // --- Enforce the chosen filename convention on existing source files ---
+      if (filenameConvention) {
+        consola.log(`\nChecking existing files against the ${bold(filenameConvention)} convention...`);
+        await runFixFilenames(resolvedDir, filenameConvention, { dryRun, yes });
+      }
+
       if (dryRun) {
         consola.success('[dry-run] Preview complete. No files were written.');
       } else {
@@ -1027,6 +1033,105 @@ function resolveConvention(input: string): FilenameConvention | null {
   return CONVENTION_ALIASES[normalized] ?? null;
 }
 
+/** Scans `resolvedDir` for source files that don't match `convention`,
+ * prints the rename/conflict plan, and applies it (rename + import rewrite)
+ * unless `dryRun` is set. Shared by the standalone `fix-filenames` command
+ * and `setup`'s post-scaffold filename-convention pass — `confirmMessage`
+ * is only used by callers that want an extra confirmation prompt before
+ * applying (fix-filenames does; setup relies on its own upfront "Continue?"
+ * gate instead and passes `undefined`). */
+async function runFixFilenames(
+  resolvedDir: string,
+  convention: FilenameConvention,
+  options: {
+    dryRun: boolean;
+    yes: boolean;
+    extensions?: string[];
+    confirmMessage?: (renameCount: number) => string;
+  }
+): Promise<void> {
+  const extensions = options.extensions ?? DEFAULT_SOURCE_EXTENSIONS;
+
+  consola.info(`Scanning ${bold(resolvedDir)} for source files (respecting .gitignore)...`);
+  const files = await walkSourceFiles(resolvedDir, extensions);
+  const plan = computeRenamePlan(files, convention);
+
+  consola.info(
+    `Found ${files.length} candidate file(s) (${plan.unchanged.length} already conform to ${convention}).`
+  );
+
+  if (plan.renames.length === 0 && plan.conflicts.length === 0) {
+    consola.success('Nothing to rename — every file already matches the convention.');
+    return;
+  }
+
+  if (plan.renames.length > 0) {
+    consola.info(
+      boxen(plan.renames.map((r) => `${r.from}  ->  ${r.to}`).join('\n'), {
+        title: `Renames (${plan.renames.length})`,
+        borderStyle: 'round',
+        borderColor: 'cyan',
+        padding: 1,
+        margin: 1,
+      })
+    );
+  }
+
+  if (plan.conflicts.length > 0) {
+    consola.warn(
+      boxen(
+        plan.conflicts.map((c) => `${c.sources.join(', ')}  ->  ${c.targetPath}`).join('\n'),
+        {
+          title: `Conflicts (${plan.conflicts.length}) — skipped, not renamed`,
+          borderStyle: 'round',
+          borderColor: 'yellow',
+          padding: 1,
+          margin: 1,
+        }
+      )
+    );
+  }
+
+  if (options.dryRun) {
+    consola.success('[dry-run] No files were changed.');
+    return;
+  }
+
+  if (!options.yes && options.confirmMessage) {
+    const proceed = await confirm({ message: options.confirmMessage(plan.renames.length) });
+    handlePromptCancel(proceed);
+    if (!proceed) {
+      consola.info('Operation cancelled.');
+      process.exit(0);
+    }
+  }
+
+  const result = await applyRenamePlan(resolvedDir, files, plan.renames, { dryRun: false });
+
+  if (!result.usedTsconfig) {
+    consola.warn(
+      'No tsconfig.json found — path-alias imports (e.g. "@/...") cannot be rewritten, only relative imports.'
+    );
+  }
+
+  const importsUpdated = new Set(result.applied.flatMap((r) => r.referencesUpdated)).size;
+  consola.success(
+    `Done. Renamed ${plan.renames.length} file(s), updated imports in ${importsUpdated} file(s).${plan.conflicts.length > 0 ? ` Skipped ${plan.conflicts.length} conflict(s) — see above.` : ''}`
+  );
+
+  if (result.manualCheckNeeded.length > 0) {
+    consola.warn(
+      boxen(result.manualCheckNeeded.join('\n'), {
+        title: 'Manual check needed',
+        borderStyle: 'round',
+        borderColor: 'yellow',
+        padding: 1,
+        margin: 1,
+      })
+    );
+  }
+}
+
 const fixFilenamesCommand = new Command('fix-filenames')
   .description('Rename source files to match a naming convention and update imports')
   .argument('[projectdir]', 'Root directory of the target project')
@@ -1092,89 +1197,12 @@ const fixFilenamesCommand = new Command('fix-filenames')
           ? options.include.split(',').map((ext) => ext.trim()).filter(Boolean)
           : DEFAULT_SOURCE_EXTENSIONS;
 
-        // --- Scan + compute plan ---
-        consola.info(`Scanning ${bold(resolvedDir)} for source files (respecting .gitignore)...`);
-        const files = await walkSourceFiles(resolvedDir, extensions);
-        const plan = computeRenamePlan(files, convention);
-
-        consola.info(
-          `Found ${files.length} candidate file(s) (${plan.unchanged.length} already conform).`
-        );
-
-        if (plan.renames.length === 0 && plan.conflicts.length === 0) {
-          consola.success('Nothing to rename — every file already matches the convention.');
-          return;
-        }
-
-        if (plan.renames.length > 0) {
-          consola.info(
-            boxen(plan.renames.map((r) => `${r.from}  ->  ${r.to}`).join('\n'), {
-              title: `Renames (${plan.renames.length})`,
-              borderStyle: 'round',
-              borderColor: 'cyan',
-              padding: 1,
-              margin: 1,
-            })
-          );
-        }
-
-        if (plan.conflicts.length > 0) {
-          consola.warn(
-            boxen(
-              plan.conflicts
-                .map((c) => `${c.sources.join(', ')}  ->  ${c.targetPath}`)
-                .join('\n'),
-              {
-                title: `Conflicts (${plan.conflicts.length}) — skipped, not renamed`,
-                borderStyle: 'round',
-                borderColor: 'yellow',
-                padding: 1,
-                margin: 1,
-              }
-            )
-          );
-        }
-
-        if (dryRun) {
-          consola.success('[dry-run] No files were changed.');
-          return;
-        }
-
-        if (!yes) {
-          const proceed = await confirm({
-            message: `Apply ${plan.renames.length} rename(s) and update imports?`,
-          });
-          handlePromptCancel(proceed);
-          if (!proceed) {
-            consola.info('Operation cancelled.');
-            process.exit(0);
-          }
-        }
-
-        const result = await applyRenamePlan(resolvedDir, files, plan.renames, { dryRun: false });
-
-        if (!result.usedTsconfig) {
-          consola.warn(
-            'No tsconfig.json found — path-alias imports (e.g. "@/...") cannot be rewritten, only relative imports.'
-          );
-        }
-
-        const importsUpdated = new Set(result.applied.flatMap((r) => r.referencesUpdated)).size;
-        consola.success(
-          `Done. Renamed ${plan.renames.length} file(s), updated imports in ${importsUpdated} file(s).${plan.conflicts.length > 0 ? ` Skipped ${plan.conflicts.length} conflict(s) — see above.` : ''}`
-        );
-
-        if (result.manualCheckNeeded.length > 0) {
-          consola.warn(
-            boxen(result.manualCheckNeeded.join('\n'), {
-              title: 'Manual check needed',
-              borderStyle: 'round',
-              borderColor: 'yellow',
-              padding: 1,
-              margin: 1,
-            })
-          );
-        }
+        await runFixFilenames(resolvedDir, convention, {
+          dryRun,
+          yes,
+          extensions,
+          confirmMessage: (renameCount) => `Apply ${renameCount} rename(s) and update imports?`,
+        });
       } catch (error) {
         if (error instanceof Error) {
           consola.error(`fix-filenames failed: ${error.message}`);

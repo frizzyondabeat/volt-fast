@@ -97,9 +97,10 @@ Installs and configures frontend tooling into an existing project.
 2. Select tools to configure
 3. For Husky: choose which hooks to enable (pre-commit lint, pre-push typecheck, commitlint)
 4. For Tailwind: optionally specify the CSS entry file path
-5. Choose a filename convention (kebab-case, camelCase, PascalCase)
+5. Choose a filename convention (kebab-case, camelCase, PascalCase) — only asked when ESLint is selected
 6. CLI installs packages and writes all config files
 7. For Shadcn: patches `tsconfig.json` paths + `vite.config`, then runs `shadcn@latest init`
+8. If a filename convention was chosen, the CLI also scans the project's existing source files and applies it (same rename + import-rewrite as [`fix-filenames`](#volt-fast-fix-filenames-projectdir)) — respects `--dry-run`
 
 ---
 
