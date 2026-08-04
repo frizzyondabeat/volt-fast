@@ -95,11 +95,26 @@ export async function generateEslintConfig(
   if (hasPrettier)
     importLines.push("import prettierConfig from 'eslint-config-prettier';");
 
-  const configEntries: string[] = [
+  const configEntries: string[] = [];
+
+  if (hasTs) {
+    // `projectService: true` (below) requires every linted file to belong
+    // to a tsconfig project — eslint.config.mjs itself never does (it's
+    // outside any tsconfig's `include`/`references`), which otherwise
+    // throws a parsing error on itself the moment ESLint lints the repo.
+    configEntries.push(`{ ignores: ['eslint.config.mjs'] }`);
+  }
+
+  configEntries.push(
     'js.configs.recommended',
-    '...reactPlugin.configs.flat.recommended',
-    "reactHooksPlugin.configs['recommended-latest']",
-  ];
+    'reactPlugin.configs.flat.recommended',
+    // Every current scaffold (Vite, Next.js, CRA) uses the automatic JSX
+    // runtime — must come after `recommended` to override its
+    // `react-in-jsx-scope`/`jsx-uses-react` rules, which assume the old
+    // classic transform and otherwise flag every JSX-using file.
+    "reactPlugin.configs.flat['jsx-runtime']",
+    "reactHooksPlugin.configs.flat['recommended-latest']"
+  );
 
   if (hasTs) configEntries.push('...tseslint.configs.recommended');
   if (hasNext) {

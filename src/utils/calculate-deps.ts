@@ -19,7 +19,11 @@ export function calculateDependencies(
 
   if (selectedTools.includes('eslint')) {
     deps.push(
-      'eslint',
+      // Pinned below eslint@10: eslint-plugin-react's latest release
+      // (7.37.5) declares a peerDependency ceiling of eslint@^9.7 and
+      // crashes at lint-time on eslint@10 (removed `context.getFilename()`).
+      // Bump this once eslint-plugin-react ships v10 support.
+      'eslint@^9',
       '@eslint/js',
       'eslint-plugin-react',
       'eslint-plugin-react-hooks',
