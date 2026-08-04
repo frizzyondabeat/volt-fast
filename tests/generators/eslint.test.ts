@@ -2,7 +2,7 @@ import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { generateEslintConfig } from '../../src/generators/eslint.js';
+import { generateEslintConfig, isCommonJsConfigFile } from '../../src/generators/eslint.js';
 import type { GeneratorOptions } from '../../src/generators/types.js';
 
 let tmpDir: string | undefined;
@@ -80,5 +80,99 @@ describe('generateEslintConfig — fresh config generation', () => {
     );
     const [, content] = files.find(([f]) => f === 'eslint.config.mjs')!;
     expect(content).toContain('PASCAL_CASE');
+  });
+});
+
+describe('isCommonJsConfigFile', () => {
+  it('.cjs is always CommonJS regardless of package.json type', () => {
+    expect(isCommonJsConfigFile('eslint.config.cjs', 'module')).toBe(true);
+    expect(isCommonJsConfigFile('eslint.config.cjs', undefined)).toBe(true);
+  });
+
+  it('.mjs and .mts are always ESM regardless of package.json type', () => {
+    expect(isCommonJsConfigFile('eslint.config.mjs', undefined)).toBe(false);
+    expect(isCommonJsConfigFile('eslint.config.mts', undefined)).toBe(false);
+  });
+
+  it('.ts is treated as ESM (flat config .ts files are conventionally ESM)', () => {
+    expect(isCommonJsConfigFile('eslint.config.ts', undefined)).toBe(false);
+  });
+
+  it('plain .js depends on package.json "type"', () => {
+    expect(isCommonJsConfigFile('eslint.config.js', undefined)).toBe(true);
+    expect(isCommonJsConfigFile('eslint.config.js', 'commonjs')).toBe(true);
+    expect(isCommonJsConfigFile('eslint.config.js', 'module')).toBe(false);
+  });
+});
+
+describe('generateEslintConfig — extending an existing config', () => {
+  async function writeExisting(
+    projectDir: string,
+    filename: string,
+    content: string,
+    packageJsonType?: string
+  ): Promise<void> {
+    await fs.outputFile(path.join(projectDir, filename), content, 'utf-8');
+    await fs.outputJSON(path.join(projectDir, 'package.json'), {
+      name: 'test',
+      ...(packageJsonType ? { type: packageJsonType } : {}),
+    });
+  }
+
+  it('injects require() into an existing .cjs config, not import (regression: import syntax is a hard SyntaxError in a .cjs file)', async () => {
+    const dir = makeTmpDir();
+    await writeExisting(
+      dir,
+      'eslint.config.cjs',
+      `const js = require('@eslint/js');\n\nmodule.exports = [\n  js.configs.recommended,\n];\n`
+    );
+
+    const files = await generateEslintConfig(makeOptions({ projectDir: dir }));
+    const [, content] = files.find(([f]) => f === 'eslint.config.cjs')!;
+    expect(content).toContain("require(\"eslint-plugin-check-file\")");
+    expect(content).not.toContain('import ');
+  });
+
+  it('injects require() into an existing plain .js config without "type": "module"', async () => {
+    const dir = makeTmpDir();
+    await writeExisting(
+      dir,
+      'eslint.config.js',
+      `const js = require('@eslint/js');\n\nmodule.exports = [\n  js.configs.recommended,\n];\n`
+    );
+
+    const files = await generateEslintConfig(makeOptions({ projectDir: dir }));
+    const [, content] = files.find(([f]) => f === 'eslint.config.js')!;
+    expect(content).toContain("require(\"eslint-plugin-check-file\")");
+    expect(content).not.toContain('import ');
+  });
+
+  it('injects import syntax into an existing .js config with "type": "module"', async () => {
+    const dir = makeTmpDir();
+    await writeExisting(
+      dir,
+      'eslint.config.js',
+      `import js from '@eslint/js';\n\nexport default [\n  js.configs.recommended,\n];\n`,
+      'module'
+    );
+
+    const files = await generateEslintConfig(makeOptions({ projectDir: dir }));
+    const [, content] = files.find(([f]) => f === 'eslint.config.js')!;
+    expect(content).toContain('import checkFile from "eslint-plugin-check-file"');
+    expect(content).not.toContain('require(');
+  });
+
+  it('injects import syntax into an existing .mjs config regardless of package.json', async () => {
+    const dir = makeTmpDir();
+    await writeExisting(
+      dir,
+      'eslint.config.mjs',
+      `import js from '@eslint/js';\n\nexport default [\n  js.configs.recommended,\n];\n`
+    );
+
+    const files = await generateEslintConfig(makeOptions({ projectDir: dir }));
+    const [, content] = files.find(([f]) => f === 'eslint.config.mjs')!;
+    expect(content).toContain('import checkFile from "eslint-plugin-check-file"');
+    expect(content).not.toContain('require(');
   });
 });

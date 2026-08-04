@@ -25,8 +25,18 @@ export function calculateDependencies(
       // Bump this once eslint-plugin-react ships v10 support.
       'eslint@^9',
       '@eslint/js',
-      'eslint-plugin-react',
-      'eslint-plugin-react-hooks',
+      // Pinned to the major version whose flat-config export shape the
+      // generated eslint.config.mjs is written against (configs.flat.*
+      // being single objects, not arrays; configs.flat['jsx-runtime'] and
+      // configs.flat['recommended-latest'] existing at all). An unpinned
+      // install would silently pick up a future major release that
+      // reshapes these exports again — exactly what eslint-plugin-react-
+      // hooks already did once (splitting legacy configs[...] from the
+      // newer configs.flat[...]) — and break generated configs with no
+      // warning. Bump the floor alongside any generator change that
+      // depends on a newer shape.
+      'eslint-plugin-react@^7.37',
+      'eslint-plugin-react-hooks@^7.1',
       'eslint-plugin-check-file'
     );
     if (detectedTools.includes('typescript')) {

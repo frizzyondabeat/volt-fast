@@ -5,6 +5,21 @@ import { findExistingConfig } from '../utils/find-config.js';
 import { formatCode } from '../utils/format.js';
 import type { FilenameConvention, GeneratorOptions } from './types.js';
 
+/** Whether a given existing flat-config filename is CommonJS (so injected
+ * code must use `require()`, not `import`) — `.cjs` always is, `.mjs`/`.ts`/
+ * `.mts` never are, and plain `.js` depends on the nearest package.json's
+ * `"type"` field (CommonJS unless it says `"module"`). Pure — takes the
+ * already-read package.json `type` value rather than doing its own I/O. */
+export function isCommonJsConfigFile(
+  filename: string,
+  packageJsonType: string | undefined
+): boolean {
+  if (filename.endsWith('.cjs')) return true;
+  if (filename.endsWith('.mjs') || filename.endsWith('.mts')) return false;
+  if (filename.endsWith('.ts')) return false;
+  return packageJsonType !== 'module';
+}
+
 export async function generateEslintConfig(
   options: GeneratorOptions
 ): Promise<[string, string][]> {
@@ -28,14 +43,29 @@ export async function generateEslintConfig(
     const fullPath = path.join(projectDir, existingFlat);
     let existing = await fs.readFile(fullPath, 'utf-8');
 
+    let packageJsonType: string | undefined;
+    try {
+      const pkg = await fs.readJSON(path.join(projectDir, 'package.json'));
+      packageJsonType = pkg.type;
+    } catch {
+      packageJsonType = undefined;
+    }
+    const isCjs = isCommonJsConfigFile(existingFlat, packageJsonType);
+
+    // `.cjs` (and `.js` without "type": "module") can't use `import` syntax —
+    // Node throws a hard SyntaxError loading it. Match whatever module
+    // system the existing config actually uses.
+    const importStatement = (name: string, pkg: string): string =>
+      isCjs ? `const ${name} = require('${pkg}');` : `import ${name} from '${pkg}';`;
+
     const newImports: string[] = [
-      "import checkFile from 'eslint-plugin-check-file';",
+      importStatement('checkFile', 'eslint-plugin-check-file'),
     ];
     const newEntries: string[] = [
       `{ plugins: { 'check-file': checkFile }, rules: { 'check-file/filename-naming-convention': ['error', { '**/*': '${convention}' }, { ignoreMiddleExtensions: true }] } }`,
     ];
     if (hasPrettier && !existing.includes('eslint-config-prettier')) {
-      newImports.unshift("import prettierConfig from 'eslint-config-prettier';");
+      newImports.unshift(importStatement('prettierConfig', 'eslint-config-prettier'));
       newEntries.push('prettierConfig');
     }
 
