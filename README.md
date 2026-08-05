@@ -33,6 +33,7 @@
 - [Commands](#commands)
   - [setup](#volt-fast-setup-projectdir)
   - [test](#volt-fast-test-projectdir)
+  - [fix-filenames](#volt-fast-fix-filenames-projectdir)
 - [What It Generates](#what-it-generates)
 - [Flags](#flags)
 - [Contributing](#contributing)
@@ -96,9 +97,10 @@ Installs and configures frontend tooling into an existing project.
 2. Select tools to configure
 3. For Husky: choose which hooks to enable (pre-commit lint, pre-push typecheck, commitlint)
 4. For Tailwind: optionally specify the CSS entry file path
-5. Choose a filename convention (kebab-case, camelCase, PascalCase)
+5. Choose a filename convention (kebab-case, camelCase, PascalCase) — only asked when ESLint is selected
 6. CLI installs packages and writes all config files
 7. For Shadcn: patches `tsconfig.json` paths + `vite.config`, then runs `shadcn@latest init`
+8. If a filename convention was chosen, the CLI also scans the project's existing source files and applies it (same rename + import-rewrite as [`fix-filenames`](#volt-fast-fix-filenames-projectdir)) — respects `--dry-run`
 
 ---
 
@@ -133,6 +135,35 @@ In all cases it also writes `__tests__/example.test.tsx` and adds `test` / `test
 5. Config file, optional setup file, and example test are written
 6. `package.json` scripts are updated
 
+### `volt-fast fix-filenames [projectdir]`
+
+Scans a project's source files, renames any that don't match a chosen naming convention, and rewrites the imports/requires elsewhere in the codebase that reference them — so the project still builds after the rename.
+
+- `projectdir` is optional — if omitted, the CLI prompts for the target directory
+- Scans `.ts`, `.tsx`, `.js`, `.jsx`, `.css`, `.scss` files by default (override with `--include`)
+- Respects the target project's `.gitignore` (including nested ones), plus always skips `node_modules` and `.git`
+- Renames + rewrites relative imports, barrel re-exports, dynamic `import()`, and `require()` calls via [ts-morph](https://ts-morph.com)
+- Files with colliding target names (e.g. `MyComponent.tsx` and `my-component.tsx` both resolving to `my-component.tsx`) are reported and skipped, never partially renamed
+- `.css`/`.scss` files are renamed and their referencing `import './old-name.css'` specifiers are rewritten too
+
+**Flow:**
+
+1. Choose target project directory
+2. Choose a naming convention (kebab-case, PascalCase, camelCase, snake_case) or pass `--convention`
+3. CLI scans and prints the rename plan (renames, conflicts)
+4. Confirm to apply (skipped with `--yes`)
+5. Files are renamed and referencing imports are rewritten
+
+```bash
+# Preview only — nothing is written
+volt-fast fix-filenames ./my-app --convention kebab-case --dry-run
+
+# Apply non-interactively
+volt-fast fix-filenames ./my-app --convention kebab-case --yes
+```
+
+**Known limitation:** path-alias imports (e.g. `@/components/OldName`, from a tsconfig `paths` mapping) aren't guaranteed to be rewritten the same way relative imports are — the CLI flags any it can't confirm were updated so you can check them manually. Run with `--dry-run` first on anything you care about.
+
 ## What It Generates
 
 ### `setup`
@@ -160,13 +191,22 @@ In all cases it also writes `__tests__/example.test.tsx` and adds `test` / `test
 
 ## Flags
 
-Both `setup` and `test` support the following flags:
+`setup` and `test` support:
 
 | Flag | Description |
 |------|-------------|
 | `--yes` | Non-interactive mode; skips all prompts and uses defaults (all tools, Vitest, kebab-case) |
 | `--tools <csv>` | Comma-separated list of tools to configure, used with `--yes` (e.g. `--tools eslint,prettier,husky`) |
 | `--dry-run` | Runs the full pipeline but writes no files and executes no commands |
+
+`fix-filenames` supports:
+
+| Flag | Description |
+|------|-------------|
+| `--convention <convention>` | `kebab-case`, `PascalCase`, `camelCase`, or `snake_case` |
+| `--include <csv>` | Comma-separated extensions to scan (default: `ts,tsx,js,jsx,css,scss`) |
+| `--yes` | Non-interactive mode; uses `--convention` (default kebab-case) and skips the confirmation |
+| `--dry-run` | Computes and prints the rename plan without touching disk |
 
 ## Contributing
 

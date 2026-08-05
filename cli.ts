@@ -27,8 +27,11 @@ import type {
 } from './src/generators/types.js';
 import { calculateDependencies } from './src/utils/calculate-deps.js';
 import { detectPackageManager, detectProjectTools } from './src/utils/detect-project.js';
+import { computeRenamePlan } from './src/utils/rename-plan.js';
+import { applyRenamePlan } from './src/utils/rename-project.js';
 import { calculateTestDependencies, testScripts } from './src/utils/test-deps.js';
 import type { TestFramework, TestRunner } from './src/utils/test-deps.js';
+import { DEFAULT_SOURCE_EXTENSIONS, walkSourceFiles } from './src/utils/walk-source-files.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -812,6 +815,12 @@ Continue?`,
         }
       }
 
+      // --- Enforce the chosen filename convention on existing source files ---
+      if (filenameConvention) {
+        consola.log(`\nChecking existing files against the ${bold(filenameConvention)} convention...`);
+        await runFixFilenames(resolvedDir, filenameConvention, { dryRun, yes });
+      }
+
       if (dryRun) {
         consola.success('[dry-run] Preview complete. No files were written.');
       } else {
@@ -1001,6 +1010,210 @@ const testCommand = new Command('test')
     }
   });
 
+// ---------------------------------------------------------------------------
+// `volt-fast fix-filenames [projectdir]`
+// Scans a project for source files, renames them to match a chosen
+// FilenameConvention, and rewrites imports/requires that reference them.
+// ---------------------------------------------------------------------------
+const CONVENTION_ALIASES: Record<string, FilenameConvention> = {
+  'kebab-case': 'KEBAB_CASE',
+  kebab: 'KEBAB_CASE',
+  pascalcase: 'PASCAL_CASE',
+  'pascal-case': 'PASCAL_CASE',
+  pascal: 'PASCAL_CASE',
+  camelcase: 'CAMEL_CASE',
+  'camel-case': 'CAMEL_CASE',
+  camel: 'CAMEL_CASE',
+  'snake-case': 'SNAKE_CASE',
+  snake: 'SNAKE_CASE',
+};
+
+function resolveConvention(input: string): FilenameConvention | null {
+  const normalized = input.toLowerCase().replace(/_/g, '-');
+  return CONVENTION_ALIASES[normalized] ?? null;
+}
+
+/** Scans `resolvedDir` for source files that don't match `convention`,
+ * prints the rename/conflict plan, and applies it (rename + import rewrite)
+ * unless `dryRun` is set. Shared by the standalone `fix-filenames` command
+ * and `setup`'s post-scaffold filename-convention pass — `confirmMessage`
+ * is only used by callers that want an extra confirmation prompt before
+ * applying (fix-filenames does; setup relies on its own upfront "Continue?"
+ * gate instead and passes `undefined`). */
+async function runFixFilenames(
+  resolvedDir: string,
+  convention: FilenameConvention,
+  options: {
+    dryRun: boolean;
+    yes: boolean;
+    extensions?: string[];
+    confirmMessage?: (renameCount: number) => string;
+  }
+): Promise<void> {
+  const extensions = options.extensions ?? DEFAULT_SOURCE_EXTENSIONS;
+
+  consola.info(`Scanning ${bold(resolvedDir)} for source files (respecting .gitignore)...`);
+  const files = await walkSourceFiles(resolvedDir, extensions);
+  const plan = computeRenamePlan(files, convention);
+
+  consola.info(
+    `Found ${files.length} candidate file(s) (${plan.unchanged.length} already conform to ${convention}).`
+  );
+
+  if (plan.renames.length === 0 && plan.conflicts.length === 0) {
+    consola.success('Nothing to rename — every file already matches the convention.');
+    return;
+  }
+
+  if (plan.renames.length > 0) {
+    consola.info(
+      boxen(plan.renames.map((r) => `${r.from}  ->  ${r.to}`).join('\n'), {
+        title: `Renames (${plan.renames.length})`,
+        borderStyle: 'round',
+        borderColor: 'cyan',
+        padding: 1,
+        margin: 1,
+      })
+    );
+  }
+
+  if (plan.conflicts.length > 0) {
+    consola.warn(
+      boxen(
+        plan.conflicts.map((c) => `${c.sources.join(', ')}  ->  ${c.targetPath}`).join('\n'),
+        {
+          title: `Conflicts (${plan.conflicts.length}) — skipped, not renamed`,
+          borderStyle: 'round',
+          borderColor: 'yellow',
+          padding: 1,
+          margin: 1,
+        }
+      )
+    );
+  }
+
+  if (options.dryRun) {
+    consola.success('[dry-run] No files were changed.');
+    return;
+  }
+
+  if (!options.yes && options.confirmMessage) {
+    const proceed = await confirm({ message: options.confirmMessage(plan.renames.length) });
+    handlePromptCancel(proceed);
+    if (!proceed) {
+      consola.info('Operation cancelled.');
+      process.exit(0);
+    }
+  }
+
+  const result = await applyRenamePlan(resolvedDir, files, plan.renames, { dryRun: false });
+
+  if (!result.usedTsconfig) {
+    consola.warn(
+      'No tsconfig.json found — path-alias imports (e.g. "@/...") cannot be rewritten, only relative imports.'
+    );
+  }
+
+  const importsUpdated = new Set(result.applied.flatMap((r) => r.referencesUpdated)).size;
+  consola.success(
+    `Done. Renamed ${plan.renames.length} file(s), updated imports in ${importsUpdated} file(s).${plan.conflicts.length > 0 ? ` Skipped ${plan.conflicts.length} conflict(s) — see above.` : ''}`
+  );
+
+  if (result.manualCheckNeeded.length > 0) {
+    consola.warn(
+      boxen(result.manualCheckNeeded.join('\n'), {
+        title: 'Manual check needed',
+        borderStyle: 'round',
+        borderColor: 'yellow',
+        padding: 1,
+        margin: 1,
+      })
+    );
+  }
+}
+
+const fixFilenamesCommand = new Command('fix-filenames')
+  .description('Rename source files to match a naming convention and update imports')
+  .argument('[projectdir]', 'Root directory of the target project')
+  .option(
+    '--convention <convention>',
+    'Naming convention: kebab-case, PascalCase, camelCase, or snake_case'
+  )
+  .option('--include <extensions>', 'Comma-separated file extensions to scan (default: ts,tsx,js,jsx,css,scss)')
+  .option('--yes', 'Skip prompts — use --convention (default kebab-case) and skip the confirmation')
+  .option('--dry-run', 'Preview renames and import rewrites without touching disk')
+  .action(
+    async (
+      projectdir?: string,
+      options?: { convention?: string; include?: string; yes?: boolean; dryRun?: boolean }
+    ) => {
+      try {
+        const yes: boolean = options?.yes ?? false;
+        const dryRun: boolean = options?.dryRun ?? false;
+
+        printBanner('Renaming files to match your naming convention...');
+
+        if (dryRun) {
+          consola.info('[dry-run] No files will be changed.\n');
+        }
+
+        // --- Resolve target directory ---
+        let targetDir: string;
+        if (yes && projectdir) {
+          targetDir = projectdir;
+          const check = validateDirectory(targetDir);
+          if (check !== true) {
+            consola.error(check);
+            process.exit(1);
+          }
+        } else {
+          const targetDirResult = await promptProjectDirectory({ projectdir });
+          handlePromptCancel(targetDirResult);
+          targetDir = targetDirResult as string;
+        }
+        const resolvedDir = path.resolve(targetDir);
+
+        // --- Resolve convention ---
+        let convention: FilenameConvention;
+        if (options?.convention) {
+          const resolved = resolveConvention(options.convention);
+          if (!resolved) {
+            consola.error(
+              `Unknown convention "${options.convention}". Use kebab-case, PascalCase, camelCase, or snake_case.`
+            );
+            process.exit(1);
+          }
+          convention = resolved as FilenameConvention;
+        } else if (yes) {
+          convention = 'KEBAB_CASE';
+        } else {
+          const conventionResult = await promptFilenameConvention();
+          handlePromptCancel(conventionResult);
+          convention = conventionResult as FilenameConvention;
+        }
+
+        // --- Resolve extensions ---
+        const extensions = options?.include
+          ? options.include.split(',').map((ext) => ext.trim()).filter(Boolean)
+          : DEFAULT_SOURCE_EXTENSIONS;
+
+        await runFixFilenames(resolvedDir, convention, {
+          dryRun,
+          yes,
+          extensions,
+          confirmMessage: (renameCount) => `Apply ${renameCount} rename(s) and update imports?`,
+        });
+      } catch (error) {
+        if (error instanceof Error) {
+          consola.error(`fix-filenames failed: ${error.message}`);
+        } else {
+          consola.error('fix-filenames failed with an unexpected error.');
+        }
+        process.exit(1);
+      }
+    }
+  );
+
 process.on('SIGINT', () => process.exit(0));
 process.on('SIGTERM', () => process.exit(0));
 
@@ -1017,6 +1230,7 @@ async function main(): Promise<void> {
     );
   program.addCommand(setupCommand);
   program.addCommand(testCommand);
+  program.addCommand(fixFilenamesCommand);
   program.parse();
 }
 

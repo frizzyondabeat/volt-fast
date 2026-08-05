@@ -24,10 +24,10 @@ describe('calculateDependencies', () => {
   describe('eslint', () => {
     it('adds core eslint packages', () => {
       const deps = calculateDependencies(['eslint'], []);
-      expect(deps).toContain('eslint');
+      expect(deps).toContain('eslint@^9');
       expect(deps).toContain('@eslint/js');
-      expect(deps).toContain('eslint-plugin-react');
-      expect(deps).toContain('eslint-plugin-react-hooks');
+      expect(deps).toContain('eslint-plugin-react@^7.37');
+      expect(deps).toContain('eslint-plugin-react-hooks@^7.1');
       expect(deps).toContain('eslint-plugin-check-file');
     });
 
