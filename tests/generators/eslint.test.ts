@@ -60,18 +60,40 @@ describe('generateEslintConfig — fresh config generation', () => {
     expect(content).toContain('...tseslint.configs.recommended');
   });
 
-  it('ignores its own config file when TS type-aware linting is enabled (regression: projectService:true otherwise throws a parsing error on eslint.config.mjs itself, since it is outside every tsconfig)', async () => {
+  it('opts non-.ts root-level config files into the projectService default-project fallback when TS type-aware linting is enabled (regression: projectService:true alone throws a parsing error on any file outside every tsconfig — not just eslint.config.mjs itself, but siblings like postcss.config.mjs too, reproduced against a real create-next-app project)', async () => {
     const files = await generateEslintConfig(
       makeOptions({ detectedTools: ['typescript'] })
     );
     const [, content] = files.find(([f]) => f === 'eslint.config.mjs')!;
-    expect(content).toContain('{ ignores: ["eslint.config.mjs"] }');
+    expect(content).toContain(
+      'allowDefaultProject: ["*.config.js", "*.config.mjs", "*.config.cjs"]'
+    );
+    expect(content).toContain('tsconfigRootDir: import.meta.dirname');
   });
 
-  it('does NOT add the ignores entry when TS is not detected (no projectService, so no parsing issue to work around)', async () => {
+  it('excludes .ts/.mts from the default-project glob (regression: a .ts config like next.config.ts is typically already covered by the tsconfig\'s own **/*.ts include, and typescript-eslint errors if a file matches both the real project and the fallback glob, reproduced against a real create-next-app project)', async () => {
+    const files = await generateEslintConfig(
+      makeOptions({ detectedTools: ['typescript'] })
+    );
+    const [, content] = files.find(([f]) => f === 'eslint.config.mjs')!;
+    expect(content).not.toContain('*.config.ts');
+    expect(content).not.toContain('*.config.mts');
+  });
+
+  it('does NOT add projectService options when TS is not detected (no type-aware linting, so no parsing issue to work around)', async () => {
     const files = await generateEslintConfig(makeOptions({ detectedTools: [] }));
     const [, content] = files.find(([f]) => f === 'eslint.config.mjs')!;
-    expect(content).not.toContain('ignores');
+    expect(content).not.toContain('projectService');
+  });
+
+  it('ignores Next.js build output when nextjs is detected (regression: without it, ESLint lints .next/types/**\'s generated files too — reproduced against a real create-next-app project, which flagged unrelated no-explicit-any errors in .next/types/validator.ts)', async () => {
+    const files = await generateEslintConfig(
+      makeOptions({ detectedTools: ['nextjs'] })
+    );
+    const [, content] = files.find(([f]) => f === 'eslint.config.mjs')!;
+    expect(content).toContain('.next/**');
+    expect(content).toContain('out/**');
+    expect(content).toContain('next-env.d.ts');
   });
 
   it('embeds the chosen filename convention', async () => {
@@ -174,5 +196,63 @@ describe('generateEslintConfig — extending an existing config', () => {
     const [, content] = files.find(([f]) => f === 'eslint.config.mjs')!;
     expect(content).toContain('import checkFile from "eslint-plugin-check-file"');
     expect(content).not.toContain('require(');
+  });
+
+  it('injects into a config array wrapped in a helper call and exported via a variable (regression: create-next-app generates exactly this shape — const eslintConfig = defineConfig([...]); export default eslintConfig; — and the old regex, which only matched an array literal ending the file, failed to find the array at all)', async () => {
+    const dir = makeTmpDir();
+    await writeExisting(
+      dir,
+      'eslint.config.mjs',
+      `import { defineConfig, globalIgnores } from 'eslint/config';
+import nextVitals from 'eslint-config-next/core-web-vitals';
+
+const eslintConfig = defineConfig([
+  ...nextVitals,
+  globalIgnores(['.next/**']),
+]);
+
+export default eslintConfig;
+`
+    );
+
+    const files = await generateEslintConfig(makeOptions({ projectDir: dir }));
+    const [, content] = files.find(([f]) => f === 'eslint.config.mjs')!;
+    expect(content).toContain('import checkFile from "eslint-plugin-check-file"');
+    expect(content).toContain('check-file/filename-naming-convention');
+    // The pre-existing entries must survive the injection untouched.
+    expect(content).toContain('nextVitals');
+    expect(content).toContain("globalIgnores([\".next/**\"])");
+    expect(content).toContain('export default eslintConfig');
+  });
+
+  it('injects into a CJS config array wrapped in a helper call (module.exports = defineConfig([...]))', async () => {
+    const dir = makeTmpDir();
+    await writeExisting(
+      dir,
+      'eslint.config.cjs',
+      `const { defineConfig } = require('eslint/config');
+const js = require('@eslint/js');
+
+module.exports = defineConfig([js.configs.recommended]);
+`
+    );
+
+    const files = await generateEslintConfig(makeOptions({ projectDir: dir }));
+    const [, content] = files.find(([f]) => f === 'eslint.config.cjs')!;
+    expect(content).toContain('require("eslint-plugin-check-file")');
+    expect(content).toContain('check-file/filename-naming-convention');
+    expect(content).toContain('js.configs.recommended');
+  });
+
+  it('warns and returns no files when the config array cannot be found at all', async () => {
+    const dir = makeTmpDir();
+    await writeExisting(
+      dir,
+      'eslint.config.mjs',
+      `// no default export, no module.exports — nothing to find\nconst x = 1;\n`
+    );
+
+    const files = await generateEslintConfig(makeOptions({ projectDir: dir }));
+    expect(files).toEqual([]);
   });
 });
