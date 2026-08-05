@@ -62,4 +62,50 @@ describe('computeRenamePlan', () => {
     expect(plan.conflicts).toEqual([]);
     expect(plan.renames).toHaveLength(2);
   });
+
+  it('never renames Next.js reserved filenames', () => {
+    const plan = computeRenamePlan(
+      ['app/dashboard/page.tsx', 'app/api/users/route.ts', 'middleware.ts'],
+      'PASCAL_CASE'
+    );
+    expect(plan.renames).toEqual([]);
+    expect(plan.unchanged).toEqual([
+      'app/dashboard/page.tsx',
+      'app/api/users/route.ts',
+      'middleware.ts',
+    ]);
+    expect(plan.conflicts).toEqual([]);
+  });
+
+  it('forces css/scss files to kebab-case regardless of the chosen convention', () => {
+    const plan = computeRenamePlan(
+      ['src/styles/ButtonGroup.css', 'src/styles/CardLayout.scss'],
+      'PASCAL_CASE'
+    );
+    expect(plan.renames).toEqual([
+      { from: 'src/styles/ButtonGroup.css', to: 'src/styles/button-group.css' },
+      { from: 'src/styles/CardLayout.scss', to: 'src/styles/card-layout.scss' },
+    ]);
+  });
+
+  it('treats an already-kebab-case css file as unchanged even under a non-kebab convention', () => {
+    const plan = computeRenamePlan(['src/styles/button-group.css'], 'PASCAL_CASE');
+    expect(plan.unchanged).toEqual(['src/styles/button-group.css']);
+    expect(plan.renames).toEqual([]);
+  });
+
+  it('flags a conflict between a reserved file and a colliding renamed file', () => {
+    const plan = computeRenamePlan(
+      ['app/page.tsx', 'app/Page.tsx'],
+      'KEBAB_CASE'
+    );
+    // page.tsx is reserved -> unchanged, target "page.tsx"
+    // Page.tsx -> kebab-case -> "page.tsx" -- same target, case-insensitively
+    expect(plan.renames).toEqual([]);
+    expect(plan.unchanged).toEqual([]);
+    expect(plan.conflicts).toHaveLength(1);
+    expect(plan.conflicts[0].sources.sort()).toEqual(
+      ['app/Page.tsx', 'app/page.tsx'].sort()
+    );
+  });
 });
