@@ -42,6 +42,9 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org/
 
+      - name: Ensure npm CLI supports OIDC Trusted Publishing
+        run: npm install -g npm@latest
+
       - name: Decide whether to publish
         id: gate
         shell: bash
@@ -88,6 +91,11 @@ jobs:
 
       - name: Publish to npm
         if: steps.gate.outputs.publish == 'true'
+        # OIDC Trusted Publishing — no NODE_AUTH_TOKEN. npm CLI detects it's
+        # running in GitHub Actions (via ACTIONS_ID_TOKEN_REQUEST_URL) and
+        # exchanges a short-lived OIDC token for a publish grant, as long as
+        # this exact repo + workflow filename is registered as a Trusted
+        # Publisher on the package's npmjs.com settings. If NODE_AUTH_TOKEN
+        # were set here, npm would use classic token auth instead and skip
+        # the OIDC exchange entirely.
         run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
