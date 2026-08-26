@@ -31,13 +31,16 @@ function parseGitignore(content: string): string[] {
 
 /** Recursively enumerates files under `projectDir` matching `extensions`,
  * honoring the target project's (possibly nested) `.gitignore` files.
- * `node_modules` and `.git` are always excluded. Returns POSIX-style paths
- * relative to `projectDir`. */
+ * `node_modules` and `.git` are always excluded; `extraExcludes` adds
+ * caller-specific excludes (e.g. checked-in tool caches that aren't in
+ * `.gitignore` but shouldn't count as source of truth). Returns POSIX-style
+ * paths relative to `projectDir`. */
 export async function walkSourceFiles(
   projectDir: string,
-  extensions: string[] = DEFAULT_SOURCE_EXTENSIONS
+  extensions: string[] = DEFAULT_SOURCE_EXTENSIONS,
+  extraExcludes: string[] = []
 ): Promise<string[]> {
-  const ig = ignore().add(HARD_EXCLUDES);
+  const ig = ignore().add(HARD_EXCLUDES).add(extraExcludes);
   const extSet = new Set(extensions.map((ext) => ext.replace(/^\./, '').toLowerCase()));
   const results: string[] = [];
 

@@ -25,6 +25,15 @@ import type {
   GeneratorSettings,
   HuskySettings,
 } from './src/generators/types.js';
+import {
+  computeAssetScanPlan,
+  DEFAULT_ASSET_DIRS,
+  DEFAULT_ASSET_EXCLUDES,
+  DEFAULT_ASSET_EXTENSIONS,
+  DEFAULT_ASSET_SOURCE_EXTENSIONS,
+  deleteAssets,
+  gatherAssetUsage,
+} from './src/utils/asset-scan.js';
 import { calculateDependencies } from './src/utils/calculate-deps.js';
 import { detectPackageManager, detectProjectTools } from './src/utils/detect-project.js';
 import { computeRenamePlan } from './src/utils/rename-plan.js';
@@ -1214,6 +1223,200 @@ const fixFilenamesCommand = new Command('fix-filenames')
     }
   );
 
+/** Scans `resolvedDir` for static assets unreferenced from source, prints
+ * the used/unused/sourceOriginal/dynamicMaybe breakdown, and deletes the
+ * `unused` bucket when `options.fix` is set (after confirmation unless
+ * `--yes`). Report-only (no prompt, no deletion) when `--fix` is omitted —
+ * that's the default, safe mode. */
+async function runScanAssets(
+  resolvedDir: string,
+  options: {
+    assetDirs?: string[];
+    extensions?: string[];
+    excludes?: string[];
+    fix: boolean;
+    dryRun: boolean;
+    yes: boolean;
+  }
+): Promise<void> {
+  const requestedAssetDirs = options.assetDirs ?? DEFAULT_ASSET_DIRS;
+  const assetDirs = requestedAssetDirs.filter((dir) =>
+    fs.existsSync(path.join(resolvedDir, dir))
+  );
+
+  if (assetDirs.length === 0) {
+    consola.info(
+      `No asset directories found (checked: ${requestedAssetDirs.join(', ')}). Nothing to scan.`
+    );
+    return;
+  }
+
+  const assetExtensions = options.extensions ?? DEFAULT_ASSET_EXTENSIONS;
+  const excludes = options.excludes ?? DEFAULT_ASSET_EXCLUDES;
+
+  consola.info(`Scanning ${bold(assetDirs.join(', '))} for unused assets...`);
+  const { assets, usage } = await gatherAssetUsage(
+    resolvedDir,
+    assetDirs,
+    assetExtensions,
+    DEFAULT_ASSET_SOURCE_EXTENSIONS,
+    excludes
+  );
+  const plan = computeAssetScanPlan(assets, usage);
+
+  consola.info(
+    `Found ${assets.length} asset file(s): ${plan.used.length} used, ${plan.sourceOriginal.length} source original(s), ${plan.dynamicMaybe.length} dynamic-maybe, ${plan.unused.length} unused.`
+  );
+
+  if (plan.unused.length === 0 && plan.dynamicMaybe.length === 0) {
+    consola.success('Nothing to flag — every asset is reachable from source.');
+    return;
+  }
+
+  if (plan.unused.length > 0) {
+    consola.warn(
+      boxen(plan.unused.join('\n'), {
+        title: `Unused (${plan.unused.length})`,
+        borderStyle: 'round',
+        borderColor: 'cyan',
+        padding: 1,
+        margin: 1,
+      })
+    );
+  }
+
+  if (plan.dynamicMaybe.length > 0) {
+    consola.warn(
+      boxen(
+        plan.dynamicMaybe
+          .map((d) => `${d.asset}  (dynamic reference in: ${d.matchedIn.join(', ')})`)
+          .join('\n'),
+        {
+          title: `Dynamic — needs manual review (${plan.dynamicMaybe.length})`,
+          borderStyle: 'round',
+          borderColor: 'yellow',
+          padding: 1,
+          margin: 1,
+        }
+      )
+    );
+    consola.info('Dynamic-path assets are never deleted automatically — check them by hand.');
+  }
+
+  if (plan.sourceOriginal.length > 0) {
+    consola.info(
+      `${plan.sourceOriginal.length} asset(s) kept as source originals (a referenced derivative sibling exists).`
+    );
+  }
+
+  if (options.dryRun) {
+    consola.success('[dry-run] No files were changed.');
+    return;
+  }
+
+  if (!options.fix) {
+    consola.info('Run with --fix to delete the unused asset(s) above (after confirmation).');
+    return;
+  }
+
+  if (plan.unused.length === 0) {
+    consola.success('Nothing to delete — no unused assets found.');
+    return;
+  }
+
+  if (!options.yes) {
+    const proceed = await confirm({ message: `Delete ${plan.unused.length} unused asset(s)?` });
+    handlePromptCancel(proceed);
+    if (!proceed) {
+      consola.info('Operation cancelled.');
+      process.exit(0);
+    }
+  }
+
+  await deleteAssets(resolvedDir, plan.unused);
+  consola.success(`Done. Deleted ${plan.unused.length} unused asset(s).`);
+}
+
+const scanAssetsCommand = new Command('scan-assets')
+  .description('Scan for static assets that are never referenced from source, and optionally delete them')
+  .argument('[projectdir]', 'Root directory of the target project')
+  .option(
+    '--dir <dirs>',
+    'Comma-separated asset directories to scan (default: public, static, assets — whichever exist)'
+  )
+  .option(
+    '--exclude <dirs>',
+    'Comma-separated extra directories to exclude (default: .next,dist,build,.graphify)'
+  )
+  .option('--include <extensions>', 'Comma-separated asset extensions to scan')
+  .option('--fix', 'Delete unused assets after confirmation')
+  .option('--yes', 'Skip prompts — non-interactive; combine with --fix to delete without confirming')
+  .option('--dry-run', 'Preview results without deleting anything')
+  .action(
+    async (
+      projectdir?: string,
+      options?: {
+        dir?: string;
+        exclude?: string;
+        include?: string;
+        fix?: boolean;
+        yes?: boolean;
+        dryRun?: boolean;
+      }
+    ) => {
+      try {
+        const yes: boolean = options?.yes ?? false;
+        const dryRun: boolean = options?.dryRun ?? false;
+        const fix: boolean = options?.fix ?? false;
+
+        printBanner('Scanning for unused static assets...');
+
+        if (dryRun) {
+          consola.info('[dry-run] No files will be changed.\n');
+        }
+
+        let targetDir: string;
+        if (yes && projectdir) {
+          targetDir = projectdir;
+          const check = validateDirectory(targetDir);
+          if (check !== true) {
+            consola.error(check);
+            process.exit(1);
+          }
+        } else {
+          const targetDirResult = await promptProjectDirectory({ projectdir });
+          handlePromptCancel(targetDirResult);
+          targetDir = targetDirResult as string;
+        }
+        const resolvedDir = path.resolve(targetDir);
+
+        const splitCsv = (value?: string): string[] | undefined =>
+          value
+            ? value
+                .split(',')
+                .map((entry) => entry.trim())
+                .filter(Boolean)
+            : undefined;
+
+        await runScanAssets(resolvedDir, {
+          assetDirs: splitCsv(options?.dir),
+          excludes: splitCsv(options?.exclude),
+          extensions: splitCsv(options?.include),
+          fix,
+          dryRun,
+          yes,
+        });
+      } catch (error) {
+        if (error instanceof Error) {
+          consola.error(`scan-assets failed: ${error.message}`);
+        } else {
+          consola.error('scan-assets failed with an unexpected error.');
+        }
+        process.exit(1);
+      }
+    }
+  );
+
 process.on('SIGINT', () => process.exit(0));
 process.on('SIGTERM', () => process.exit(0));
 
@@ -1231,6 +1434,7 @@ async function main(): Promise<void> {
   program.addCommand(setupCommand);
   program.addCommand(testCommand);
   program.addCommand(fixFilenamesCommand);
+  program.addCommand(scanAssetsCommand);
   program.parse();
 }
 

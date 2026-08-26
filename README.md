@@ -34,6 +34,7 @@
   - [setup](#volt-fast-setup-projectdir)
   - [test](#volt-fast-test-projectdir)
   - [fix-filenames](#volt-fast-fix-filenames-projectdir)
+  - [scan-assets](#volt-fast-scan-assets-projectdir)
 - [What It Generates](#what-it-generates)
 - [Flags](#flags)
 - [Contributing](#contributing)
@@ -51,6 +52,7 @@
   - Commitlint
 - Optionally initializes Shadcn UI with alias configuration
 - Scaffolds a test runner (Vitest or Jest) following the official framework guides
+- Finds static assets (images, fonts) under `public`/`static`/`assets` that no source file references, and can delete them with `--fix`
 - Non-interactive `--yes` mode for CI pipelines
 - `--dry-run` mode to preview all changes before writing
 
@@ -164,6 +166,37 @@ volt-fast fix-filenames ./my-app --convention kebab-case --yes
 
 **Known limitation:** path-alias imports (e.g. `@/components/OldName`, from a tsconfig `paths` mapping) aren't guaranteed to be rewritten the same way relative imports are — the CLI flags any it can't confirm were updated so you can check them manually. Run with `--dry-run` first on anything you care about.
 
+### `volt-fast scan-assets [projectdir]`
+
+Scans a project for static assets (images, fonts) that no source file references, and optionally deletes them. Complements import-graph tools like [knip](https://knip.dev)/depcheck/ts-prune — those only follow `import`/`require`, but asset paths are usually plain strings (`<img src="/logos/x.png">`, CSS `url(...)`, Next.js `metadata.icons`), which import graphs never see.
+
+- `projectdir` is optional — if omitted, the CLI prompts for the target directory
+- Scans `public`, `static`, and `assets` directories by default (override with `--dir`), for common image/font extensions (override with `--include`)
+- Always skips `node_modules`, `.git`, `.next`, `dist`, `build`, and `.graphify` (extend with `--exclude`)
+- Reports each asset in one of four buckets:
+  - **used** — referenced directly in source
+  - **source original** — not referenced itself, but a same-name derivative (e.g. `logo.png` next to a referenced `logo.webp`) is — kept as a build input, not flagged
+  - **dynamic — needs manual review** — not referenced directly, but a source file looks like it builds the path at runtime (a template literal or `.replace()` near that asset's directory) — never auto-resolved or deleted
+  - **unused** — no evidence of use anywhere; the only bucket `--fix` deletes
+- Default mode is report-only — nothing is deleted unless you pass `--fix`, and `--fix` always asks for confirmation unless `--yes`
+
+**Flow:**
+
+1. Choose target project directory
+2. CLI scans and prints the used/source-original/dynamic/unused breakdown
+3. Without `--fix`: stop here — report only
+4. With `--fix`: confirm to delete the unused assets (skipped with `--yes`)
+
+```bash
+# Report only — nothing is deleted
+volt-fast scan-assets ./my-app
+
+# Delete unused assets non-interactively
+volt-fast scan-assets ./my-app --fix --yes
+```
+
+**Known limitation:** matching is by filename only, not full path — two different assets that happen to share a name in different directories are indistinguishable to the scanner and will both be reported as used if either one is referenced. Always review the report before running `--fix`.
+
 ## What It Generates
 
 ### `setup`
@@ -207,6 +240,17 @@ volt-fast fix-filenames ./my-app --convention kebab-case --yes
 | `--include <csv>` | Comma-separated extensions to scan (default: `ts,tsx,js,jsx,css,scss`) |
 | `--yes` | Non-interactive mode; uses `--convention` (default kebab-case) and skips the confirmation |
 | `--dry-run` | Computes and prints the rename plan without touching disk |
+
+`scan-assets` supports:
+
+| Flag | Description |
+|------|-------------|
+| `--dir <csv>` | Comma-separated asset directories to scan (default: `public,static,assets`, whichever exist) |
+| `--exclude <csv>` | Comma-separated extra directories to exclude (default: `.next,dist,build,.graphify`) |
+| `--include <csv>` | Comma-separated asset extensions to scan |
+| `--fix` | Delete unused assets after confirmation |
+| `--yes` | Non-interactive mode; skips prompts and the confirmation |
+| `--dry-run` | Prints the report without deleting anything |
 
 ## Contributing
 
